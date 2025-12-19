@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import get_settings
 from app.db import SessionLocal
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
+from app.services.vision import detect_faces, encode_image_with_clip
 
 logger = logging.getLogger(__name__)
 
@@ -88,18 +89,20 @@ def _confidence_scores(embedding: Iterable[float], count: int) -> list[float]:
     return scores
 
 
-def _load_image(path: Path) -> np.ndarray:
+def _load_image(path: Path) -> Image.Image:
     with Image.open(path) as image:
-        return np.asarray(image.convert("RGB"))
+        return image.convert("RGB")
 
 
-def _compute_embedding(image: np.ndarray, dimensions: int = 128) -> list[float]:
+def _compute_embedding(image: Image.Image, dimensions: int = 128) -> list[float]:
     """Derive a lightweight embedding from image pixels."""
 
+    rgb_array = np.asarray(image)
+
     # Resize down to keep computation fast and deterministic
-    height, width = image.shape[:2]
+    height, width = rgb_array.shape[:2]
     downsample_factor = max(1, min(height, width) // 64)
-    reduced = image[::downsample_factor, ::downsample_factor, :]
+    reduced = rgb_array[::downsample_factor, ::downsample_factor, :]
 
     # Channel-wise statistics + flattened sample
     mean_channels = reduced.mean(axis=(0, 1))
@@ -252,6 +255,10 @@ def embed_frame(
 ) -> dict[str, Any]:
     """Generate an image-derived embedding vector for a frame and persist it."""
 
+    settings = get_settings()
+    clip_model = f"{settings.clip_model_name}:{settings.clip_pretrained}"
+    embed_model_name = embedding_model
+
     with _session_scope(session_factory) as session:
         frame = session.get(Frame, frame_id)
         if frame is None:
@@ -259,12 +266,23 @@ def embed_frame(
 
         try:
             image = _load_image(_ensure_local_copy(frame.file_path, frame.storage_uri))
-            embedding = _compute_embedding(image)
+            try:
+                embedding = encode_image_with_clip(
+                    image=image,
+                    model_name=settings.clip_model_name,
+                    pretrained=settings.clip_pretrained,
+                )
+                embed_model_name = f"clip-{clip_model}"
+            except Exception:
+                logger.exception("Falling back to deterministic embedding for frame %s", frame.id)
+                embedding = _compute_embedding(image)
+                embed_model_name = embed_model_name or "rgb-histogram-v1"
         except FileNotFoundError:
             embedding = _hash_embedding(frame.file_path.encode())
+            embed_model_name = embed_model_name or "hash-v1"
 
         frame.embedding = json.dumps(embedding)
-        frame.embedding_model = embedding_model
+        frame.embedding_model = embed_model_name
         frame.status = "embedded"
         session.add(frame)
 
@@ -274,7 +292,7 @@ def embed_frame(
             "status": "embedded",
             "frame_id": frame.id,
             "embedding_dimensions": len(embedding),
-            "embedding_model": embedding_model,
+            "embedding_model": embed_model_name,
         }
 
 
@@ -351,15 +369,65 @@ def detect_scene_attributes(
 
 @shared_task(name="frames.actor_detections")
 def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = None) -> dict[str, Any]:
+    settings = get_settings()
+
     with _session_scope(session_factory) as session:
         frame = session.get(Frame, frame_id)
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
 
-        detections = _persist_actor_detections(session, frame)
+        path = _ensure_local_copy(frame.file_path, frame.storage_uri)
+        image = _load_image(path)
+
+        try:
+            detected_faces = detect_faces(image, min_confidence=settings.face_min_confidence)
+        except Exception:
+            logger.exception("Falling back to legacy actor detection for frame %s", frame.id)
+            detected_faces = []
+
+        from app.models import MovieCast, CastMember  # local import to avoid cycles
+
+        cast_member_ids = [
+            cast_member_id
+            for (cast_member_id,) in (
+                session.query(CastMember.id)
+                    .join(MovieCast, MovieCast.cast_member_id == CastMember.id)
+                    .filter(MovieCast.movie_id == frame.movie_id)
+                    .order_by(MovieCast.cast_order)
+                    .all()
+            )
+        ]
+
+        persisted: list[dict[str, Any]] = []
+        for index, face in enumerate(detected_faces):
+            cast_member_id = cast_member_ids[index] if index < len(cast_member_ids) else None
+            bbox = ",".join(f"{value:.2f}" for value in face.bbox)
+            detection = ActorDetection(
+                frame_id=frame.id,
+                cast_member_id=cast_member_id,
+                face_index=index,
+                confidence=round(face.confidence, 3),
+                bbox=bbox,
+            )
+            session.add(detection)
+            persisted.append(
+                {
+                    "cast_member_id": cast_member_id,
+                    "confidence": detection.confidence,
+                    "bbox": face.bbox,
+                }
+            )
+
+        if not persisted and not detected_faces:
+            persisted = _persist_actor_detections(session, frame)
+
         frame.status = "actors_detected"
         session.add(frame)
-        return {"status": "actors_detected", "frame_id": frame.id, "detections": detections}
+        return {
+            "status": "actors_detected",
+            "frame_id": frame.id,
+            "detections": persisted,
+        }
 
 
 @shared_task(name="frames.pipeline")
