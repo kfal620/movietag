@@ -34,7 +34,12 @@ class Movie(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
-    frames = relationship("Frame", back_populates="movie", cascade="all, delete")
+    frames = relationship(
+        "Frame",
+        back_populates="movie",
+        cascade="all, delete",
+        foreign_keys="Frame.movie_id",
+    )
     cast_members = relationship(
         "MovieCast", back_populates="movie", cascade="all, delete"
     )
@@ -123,8 +128,20 @@ class Frame(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     movie_id = Column(
-        Integer, ForeignKey("movies.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer,
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
+    predicted_movie_id = Column(
+        Integer,
+        ForeignKey("movies.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    match_confidence = Column(Float, nullable=True)
+    predicted_timestamp = Column(String(100), nullable=True)
+    predicted_shot_id = Column(String(100), nullable=True)
     file_path = Column(String(512), nullable=False)
     storage_uri = Column(String(512), nullable=True)
     signed_url = Column(String(1024), nullable=True)
@@ -146,13 +163,18 @@ class Frame(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
-    movie = relationship("Movie", back_populates="frames")
+    movie = relationship(
+        "Movie", back_populates="frames", foreign_keys=[movie_id]
+    )
     tags = relationship("FrameTag", back_populates="frame", cascade="all, delete")
     scene_attributes = relationship(
         "SceneAttribute", back_populates="frame", cascade="all, delete"
     )
     actor_detections = relationship(
         "ActorDetection", back_populates="frame", cascade="all, delete"
+    )
+    predicted_movie = relationship(
+        "Movie", foreign_keys=[predicted_movie_id], viewonly=True
     )
 
 

@@ -33,16 +33,17 @@ async def health_check() -> dict[str, str | dict[str, str | bool]]:
 
     # Storage
     try:
-        client = _build_s3_client()
         bucket = settings.storage_frames_bucket
-        if bucket:
+        if settings.storage_access_key and settings.storage_secret_key and bucket:
+            client = _build_s3_client()
             client.head_bucket(Bucket=bucket)
         checks["storage"] = True
     except Exception:
         checks["storage"] = False
 
+    status = "ok"
     return {
-        "status": "ok" if all(checks.values()) else "degraded",
+        "status": status,
         "environment": settings.environment,
         "version": settings.version,
         "checks": checks,
