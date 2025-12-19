@@ -24,10 +24,12 @@ export function FrameDetailsPanel({ frame }: Props) {
         <h3 className="sidebar__title" style={{ marginTop: "0.9rem" }}>
           {frame.movieTitle}
         </h3>
-        <p style={{ color: "var(--muted)", marginTop: "0.3rem" }}>{frame.sceneTime}</p>
-        <p style={{ color: "var(--muted)", marginTop: "0.35rem" }}>
-          Ingested from <strong>{frame.ingestSource}</strong>
-        </p>
+        <p style={{ color: "var(--muted)", marginTop: "0.3rem" }}>Status: {frame.status.replace("_", " ")}</p>
+        {frame.ingestSource ? (
+          <p style={{ color: "var(--muted)", marginTop: "0.35rem" }}>
+            Ingested from <strong>{frame.ingestSource}</strong>
+          </p>
+        ) : null}
         <div className="meta-grid" style={{ marginTop: "0.8rem" }}>
           <div className="meta-box">
             <label>Top prediction</label>
@@ -40,6 +42,13 @@ export function FrameDetailsPanel({ frame }: Props) {
           <div className="meta-box">
             <label>Tags</label>
             <strong>{frame.tags?.join(", ") || "Unlabeled"}</strong>
+          </div>
+          <div className="meta-box">
+            <label>Scene</label>
+            <strong>
+              {frame.sceneAttributes?.map((attr) => `${attr.attribute}: ${attr.value}`).join(", ") ||
+                "Unknown"}
+            </strong>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { Frame, Prediction } from "../lib/types";
 
 type Props = {
   frame?: Frame;
-  onApply: (frameId: string, prediction: Prediction | string) => void;
+  onApply: (frameId: number, prediction: Prediction | string) => void;
 };
 
 export function OverrideForm({ frame, onApply }: Props) {

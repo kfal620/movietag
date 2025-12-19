@@ -14,7 +14,7 @@ def create_celery_app() -> Celery:
         "movietag",
         broker=settings.celery_broker_url,
         backend=settings.celery_result_backend,
-        include=["app.tasks.frames"],
+        include=["app.tasks.frames", "app.tasks.tmdb"],
     )
 
     celery_app.conf.task_default_queue = settings.celery_default_queue
@@ -22,7 +22,8 @@ def create_celery_app() -> Celery:
     celery_app.conf.result_persistent = False
 
     # ensure tasks are registered when running in-process
-    from app.tasks import frames as _  # noqa: F401
+    from app.tasks import frames as _frames  # noqa: F401
+    from app.tasks import tmdb as _tmdb  # noqa: F401
 
     celery_app.autodiscover_tasks(["app.tasks"])
     return celery_app

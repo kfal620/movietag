@@ -28,3 +28,7 @@ def test_celery_app_exposes_discovered_tasks():
     assert "frames.import" in app.tasks
     assert "frames.embed" in app.tasks
     assert "frames.tag" in app.tasks
+    assert "frames.scene_attributes" in app.tasks
+    assert "frames.actor_detections" in app.tasks
+    assert "frames.pipeline" in app.tasks
+    assert "tmdb.ingest_movie" in app.tasks
