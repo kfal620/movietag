@@ -22,6 +22,18 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+#### Environment variables
+
+The backend now ships with Celery scaffolding and a TMDb client. Configure these services via environment variables (or a `.env` file):
+
+- `APP_CELERY_BROKER_URL` / `CELERY_BROKER_URL` (default `redis://localhost:6379/0`)
+- `APP_CELERY_RESULT_BACKEND` / `CELERY_RESULT_BACKEND` (default `redis://localhost:6379/1`)
+- `APP_CELERY_DEFAULT_QUEUE` / `CELERY_DEFAULT_QUEUE` (default `movietag.default`)
+- `APP_TMDB_API_KEY` / `TMDB_API_KEY` (Bearer token for TMDb)
+- `APP_TMDB_BASE_URL` / `TMDB_BASE_URL` (default `https://api.themoviedb.org/3`)
+
+Celery tasks are defined under `app/tasks`, and the default worker app is created in `app/core/celery.py`.
+
 ### Run the API
 
 ```bash
@@ -67,10 +79,10 @@ docker-compose down -v
 
 ## Next steps
 
-- Implement database migrations (Alembic) covering the provided schema.
-- Add Celery workers for import, embedding, and tagging tasks.
-- Integrate TMDb as the first metadata provider and persist movie + cast records.
-- Add the React/Next.js frontend for browsing, review, and overrides.
+- Bring up a Celery worker process (e.g., `celery -A app.core.celery:celery_app worker --loglevel=info`) and wire the task stubs to real ingestion, embedding, and tagging logic.
+- Expand the TMDb integration to persist movies, cast, and artwork into the database.
+- Finalize Alembic migrations for the current schema and future changes as new entities are introduced.
+- Add the React/Next.js frontend for browsing frames, reviewing predictions, and applying overrides.
 
 ## Current API surface
 
