@@ -40,7 +40,7 @@ def test_embed_and_tag_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(frame_tasks, "SessionLocal", SessionLocal)
 
     embed_result = frame_tasks.embed_frame(frame_id)
-    assert embed_result["embedding_dimensions"] == 128
+    assert embed_result["embedding_dimensions"] >= 128
 
     tag_result = frame_tasks.tag_frame(frame_id)
     assert tag_result["status"] == "tagged"

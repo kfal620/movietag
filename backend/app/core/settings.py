@@ -65,6 +65,18 @@ class Settings(BaseSettings):
         default="frames",
         validation_alias=AliasChoices("APP_STORAGE_FRAMES_BUCKET", "STORAGE_FRAMES_BUCKET"),
     )
+    clip_model_name: str = Field(
+        default="ViT-B-32",
+        validation_alias=AliasChoices("APP_CLIP_MODEL_NAME", "CLIP_MODEL_NAME"),
+    )
+    clip_pretrained: str = Field(
+        default="openai",
+        validation_alias=AliasChoices("APP_CLIP_PRETRAINED", "CLIP_PRETRAINED"),
+    )
+    face_min_confidence: float = Field(
+        default=0.9,
+        validation_alias=AliasChoices("APP_FACE_MIN_CONFIDENCE", "FACE_MIN_CONFIDENCE"),
+    )
 
 
 @lru_cache
