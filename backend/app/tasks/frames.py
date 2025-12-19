@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -28,6 +29,7 @@ def _cleanup_session(session_factory: SessionFactory, session: Session) -> None:
         session.close()
 
 
+@contextmanager
 def _session_scope(
     session_factory: SessionFactory | None = None,
 ) -> Generator[Session, None, None]:
