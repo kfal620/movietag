@@ -16,6 +16,12 @@ eggs/
 venv/
 env/
 
+# Node
+node_modules/
+.next/
+next-env.d.ts
+*.log
+
 # VSCode
 .vscode/
 

@@ -84,6 +84,22 @@ docker-compose down -v
 - Finalize Alembic migrations for the current schema and future changes as new entities are introduced.
 - Add the React/Next.js frontend for browsing frames, reviewing predictions, and applying overrides.
 
+## Frontend (Next.js)
+
+The `frontend` directory contains a React/Next.js interface for browsing frames, reviewing predictions, and applying overrides.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Key views:
+
+- Frame grid with filtering by search and review status.
+- Detail sidebar that shows per-frame predictions, status, and metadata.
+- Override form to approve a model prediction or submit a manual correction.
+
 ## Current API surface
 
 - `GET /api/health`: readiness probe returning the current environment and version.
