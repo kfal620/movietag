@@ -31,6 +31,15 @@ uvicorn app.main:app --reload
 
 The API will serve under `http://localhost:8000/api`. Visit `http://localhost:8000/docs` for the automatically generated OpenAPI docs.
 
+### Run database migrations
+
+Apply the initial schema to your database using Alembic (set `APP_DATABASE_URL` in a `.env` file or environment variable to point at your Postgres instance if you are not using the default connection string):
+
+```bash
+cd backend
+alembic upgrade head
+```
+
 ### Run tests
 
 ```bash
