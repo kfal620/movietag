@@ -14,9 +14,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("movies", sa.Column("tmdb_id", sa.Integer(), nullable=True))
-    op.create_unique_constraint("uq_movies_tmdb_id", "movies", ["tmdb_id"])
-    op.create_index(op.f("ix_movies_tmdb_id"), "movies", ["tmdb_id"], unique=False)
+    with op.batch_alter_table("movies") as batch_op:
+        batch_op.add_column(sa.Column("tmdb_id", sa.Integer(), nullable=True))
+        batch_op.create_unique_constraint("uq_movies_tmdb_id", ["tmdb_id"])
+        batch_op.create_index(op.f("ix_movies_tmdb_id"), ["tmdb_id"], unique=False)
 
     op.create_table(
         "cast_members",
@@ -102,6 +103,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_cast_members_id"), table_name="cast_members")
     op.drop_table("cast_members")
 
-    op.drop_index(op.f("ix_movies_tmdb_id"), table_name="movies")
-    op.drop_constraint("uq_movies_tmdb_id", "movies", type_="unique")
-    op.drop_column("movies", "tmdb_id")
+    with op.batch_alter_table("movies") as batch_op:
+        batch_op.drop_index(op.f("ix_movies_tmdb_id"))
+        batch_op.drop_constraint("uq_movies_tmdb_id", type_="unique")
+        batch_op.drop_column("tmdb_id")
