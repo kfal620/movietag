@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     name: str = "Framegrab Tagger API"
     environment: str = "development"
     version: str = "0.1.0"
+    database_url: str = (
+        "postgresql+psycopg://movietag:movietag@localhost:5432/movietag"
+    )
 
 
 @lru_cache
