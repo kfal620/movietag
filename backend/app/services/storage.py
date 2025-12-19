@@ -87,3 +87,35 @@ def resolve_frame_signed_url(frame, *, expires_in: int = 600) -> str | None:
         return frame.signed_url
 
     return generate_presigned_url(getattr(frame, "storage_uri", None), expires_in=expires_in)
+
+
+def upload_fileobj(file_obj, *, bucket: str | None = None, key: str | None = None, content_type: str | None = None) -> str:
+    """Upload a file-like object to storage and return an ``s3://`` URI."""
+
+    settings = get_settings()
+    resolved_bucket = bucket or settings.storage_frames_bucket
+    if not resolved_bucket:
+        raise ValueError("A target bucket is required to upload files")
+
+    target_key = key
+    if not target_key:
+        import uuid
+
+        target_key = f"uploads/{uuid.uuid4().hex}"
+
+    extra_args = {"ContentType": content_type} if content_type else None
+    client = _build_s3_client()
+    client.upload_fileobj(file_obj, resolved_bucket, target_key, ExtraArgs=extra_args or {})
+    return f"s3://{resolved_bucket}/{target_key}"
+
+
+def download_to_path(storage_uri: str, destination: str) -> None:
+    """Download an object to a specific path."""
+
+    bucket_key = _bucket_and_key(storage_uri, get_settings().storage_frames_bucket)
+    if bucket_key is None:
+        raise ValueError(f"Unsupported storage URI: {storage_uri}")
+
+    bucket, key = bucket_key
+    client = _build_s3_client()
+    client.download_file(bucket, key, destination)

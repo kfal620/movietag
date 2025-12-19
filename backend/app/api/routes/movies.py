@@ -51,6 +51,7 @@ def list_movies(
     limit: int = 20,
     offset: int = 0,
     q: str | None = Query(default=None, description="Search by title"),
+    year: int | None = Query(default=None, description="Release year"),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     query = db.query(Movie).options(
@@ -59,6 +60,8 @@ def list_movies(
     )
     if q:
         query = query.filter(Movie.title.ilike(f"%{q}%"))
+    if year:
+        query = query.filter(Movie.release_year == year)
     total = query.count()
     movies = query.order_by(Movie.updated_at.desc()).offset(offset).limit(limit).all()
     return {
