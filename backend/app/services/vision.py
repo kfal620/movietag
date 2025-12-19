@@ -10,29 +10,36 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
-import open_clip
-import torch
+from typing import Any
 from PIL import Image
-from facenet_pytorch import InceptionResnetV1, MTCNN
 
 logger = logging.getLogger(__name__)
 
 
-def _device() -> torch.device:
+def _lazy_import_torch():
+    import torch  # type: ignore
+
+    return torch
+
+
+def _device():
+    torch = _lazy_import_torch()
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 @dataclass
 class ClipComponents:
-    model: torch.nn.Module
+    model: Any
     preprocess: callable
     tokenizer: callable
-    device: torch.device
+    device: Any
 
 
 @lru_cache
 def get_clip_components(model_name: str, pretrained: str) -> ClipComponents:
     """Load and cache a CLIP encoder."""
+    import open_clip  # type: ignore
+
     device = _device()
     model, _, preprocess = open_clip.create_model_and_transforms(
         model_name, pretrained=pretrained
@@ -46,6 +53,7 @@ def get_clip_components(model_name: str, pretrained: str) -> ClipComponents:
 
 def encode_image_with_clip(image: Image.Image, model_name: str, pretrained: str) -> list[float]:
     """Compute a normalized CLIP embedding for an image."""
+    torch = _lazy_import_torch()
     components = get_clip_components(model_name, pretrained)
     image_tensor = components.preprocess(image).unsqueeze(0).to(components.device)
     with torch.no_grad():
@@ -63,14 +71,16 @@ class FaceDetection:
 
 @dataclass
 class FaceModels:
-    detector: MTCNN
-    embedder: InceptionResnetV1
-    device: torch.device
+    detector: Any
+    embedder: Any
+    device: Any
 
 
 @lru_cache
 def get_face_models(min_confidence: float) -> FaceModels:
     """Load and cache face detection/recognition models."""
+    from facenet_pytorch import InceptionResnetV1, MTCNN  # type: ignore
+
     device = _device()
     detector = MTCNN(
         image_size=160,
@@ -87,6 +97,7 @@ def get_face_models(min_confidence: float) -> FaceModels:
 
 def detect_faces(image: Image.Image, min_confidence: float = 0.9) -> list[FaceDetection]:
     """Run face detection and embed each detected face."""
+    torch = _lazy_import_torch()
     models = get_face_models(min_confidence)
     # Ensure RGB for detector
     rgb_image = image.convert("RGB")
