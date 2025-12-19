@@ -25,6 +25,8 @@ def build_app_with_db():
 
     os.environ["CELERY_BROKER_URL"] = "memory://"
     os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
+    os.environ["MODERATOR_TOKEN"] = "moderator-token"
+    os.environ["ADMIN_TOKEN"] = "admin-token"
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -105,7 +107,9 @@ def test_replace_frame_tags_updates_status(monkeypatch):
 
     client = TestClient(app)
     response = client.post(
-        f"/api/frames/{frame_id}/tags", json={"tags": ["sunrise", "city"]}
+        f"/api/frames/{frame_id}/tags",
+        json={"tags": ["sunrise", "city"]},
+        headers={"Authorization": "Bearer moderator-token"},
     )
     assert response.status_code == 200
     payload = response.json()
@@ -133,7 +137,27 @@ def test_upload_ingest_enqueues_task(monkeypatch):
         "/api/frames/ingest/upload",
         data={"movie_id": 1},
         files={"file": ("demo.jpg", b"binarydata", "image/jpeg")},
+        headers={"Authorization": "Bearer moderator-token"},
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["task_id"] == "task-123"
+
+
+def test_moderation_endpoints_require_valid_token():
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        frame_id = seed_frame(session)
+
+    client = TestClient(app)
+    missing_header = client.post(
+        f"/api/frames/{frame_id}/tags", json={"tags": ["city"]}
+    )
+    assert missing_header.status_code == 401
+
+    bad_token = client.post(
+        f"/api/frames/{frame_id}/tags",
+        json={"tags": ["city"]},
+        headers={"Authorization": "Bearer invalid"},
+    )
+    assert bad_token.status_code == 403

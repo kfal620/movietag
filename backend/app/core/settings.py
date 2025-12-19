@@ -77,6 +77,14 @@ class Settings(BaseSettings):
         default=0.9,
         validation_alias=AliasChoices("APP_FACE_MIN_CONFIDENCE", "FACE_MIN_CONFIDENCE"),
     )
+    admin_token: str = Field(
+        default="admin-token",
+        validation_alias=AliasChoices("APP_ADMIN_TOKEN", "ADMIN_TOKEN"),
+    )
+    moderator_token: str = Field(
+        default="moderator-token",
+        validation_alias=AliasChoices("APP_MODERATOR_TOKEN", "MODERATOR_TOKEN"),
+    )
 
 
 @lru_cache

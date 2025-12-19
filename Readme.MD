@@ -36,6 +36,8 @@ The backend ships with Celery tasks, S3-compatible storage access, and a TMDb cl
 - `APP_STORAGE_ACCESS_KEY` / `STORAGE_ACCESS_KEY`
 - `APP_STORAGE_SECRET_KEY` / `STORAGE_SECRET_KEY`
 - `APP_STORAGE_FRAMES_BUCKET` / `STORAGE_FRAMES_BUCKET` (default `frames`)
+- `APP_ADMIN_TOKEN` / `ADMIN_TOKEN` (Bearer token granting `admin` role for moderation)
+- `APP_MODERATOR_TOKEN` / `MODERATOR_TOKEN` (Bearer token granting `moderator` role for moderation endpoints)
 
 Celery tasks are defined under `app/tasks`, and the default worker app is created in `app/core/celery.py`.
 
