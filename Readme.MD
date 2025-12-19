@@ -38,6 +38,20 @@ cd backend
 pytest
 ```
 
+### Run dependencies with Docker
+
+The repository includes a `docker-compose.yml` file that provisions Postgres, Redis, and MinIO for local development:
+
+```bash
+docker-compose up -d
+```
+
+You can tear everything down with:
+
+```bash
+docker-compose down -v
+```
+
 ## Services
 
 `docker-compose.yml` includes Postgres, Redis, and MinIO for local development. The FastAPI backend is intended to run on your host or inside a container that mounts the source tree.
@@ -48,3 +62,8 @@ pytest
 - Add Celery workers for import, embedding, and tagging tasks.
 - Integrate TMDb as the first metadata provider and persist movie + cast records.
 - Add the React/Next.js frontend for browsing, review, and overrides.
+
+## Current API surface
+
+- `GET /api/health`: readiness probe returning the current environment and version.
+- `GET /`: friendly root response with a link to the OpenAPI docs.
