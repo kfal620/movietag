@@ -161,3 +161,44 @@ def test_moderation_endpoints_require_valid_token():
         headers={"Authorization": "Bearer invalid"},
     )
     assert bad_token.status_code == 403
+
+
+def test_serialize_frame_prefers_existing_signed_url(monkeypatch):
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        frame_id = seed_frame(session)
+        frame = session.get(Frame, frame_id)
+        frame.signed_url = "https://example.com/prefetched"
+        session.add(frame)
+        session.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/api/frames/{frame_id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["signed_url"] == "https://example.com/prefetched"
+
+
+def test_serialize_frame_generates_signed_url_from_storage(monkeypatch):
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        frame_id = seed_frame(session)
+        frame = session.get(Frame, frame_id)
+        frame.storage_uri = "s3://frames/demo.jpg"
+        frame.signed_url = None
+        session.add(frame)
+        session.commit()
+
+    from app import services
+
+    monkeypatch.setattr(
+        services.storage,
+        "generate_presigned_url",
+        lambda storage_uri, expires_in=600: f"https://signed.example.com/{storage_uri}",
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/api/frames/{frame_id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["signed_url"] == "https://signed.example.com/s3://frames/demo.jpg"

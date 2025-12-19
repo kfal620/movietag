@@ -19,6 +19,7 @@ from app.models import (
     SceneAttribute,
     Tag,
 )
+from app.services.storage import resolve_frame_signed_url
 from app.tasks.frames import ingest_and_tag_frame
 
 router = APIRouter(prefix="/frames", tags=["frames"])
@@ -36,12 +37,13 @@ class FrameFilters(BaseModel):
 
 
 def _serialize_frame(frame: Frame) -> dict[str, Any]:
+    signed_url = resolve_frame_signed_url(frame)
     return {
         "id": frame.id,
         "movie_id": frame.movie_id,
         "file_path": frame.file_path,
         "storage_uri": frame.storage_uri,
-        "signed_url": frame.signed_url,
+        "signed_url": signed_url,
         "status": frame.status,
         "embedding_model": frame.embedding_model,
         "ingested_at": frame.ingested_at,
