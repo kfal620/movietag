@@ -33,7 +33,7 @@ The API will serve under `http://localhost:8000/api`. Visit `http://localhost:80
 
 ### Run database migrations
 
-Apply the initial schema to your database using Alembic (set `APP_DATABASE_URL` in a `.env` file or environment variable to point at your Postgres instance if you are not using the default connection string):
+Apply the initial schema to your database using Alembic. Set `APP_DATABASE_URL` (or the conventional `DATABASE_URL`) in a `.env` file or environment variable to point at your Postgres instance if you are not using the default connection string:
 
 ```bash
 cd backend
