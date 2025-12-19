@@ -73,10 +73,12 @@ def test_timestamp_columns_are_not_nullable_and_use_server_defaults():
 def test_frame_foreign_keys_and_indexes():
     frames = Base.metadata.tables["frames"]
 
-    assert frames.c.movie_id.nullable is False
+    assert frames.c.movie_id.nullable is True
+    assert frames.c.predicted_movie_id.nullable is True
     # SQLAlchemy marks both explicit and implicit indexes here
     assert frames.c.movie_id.index is True
     assert any(index.name == "ix_frames_movie_id" for index in frames.indexes)
+    assert any(index.name == "ix_frames_predicted_movie_id" for index in frames.indexes)
 
 
 def test_tmdb_entities_have_indexes_and_constraints():

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
+from io import BytesIO
 from celery import chain
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from urllib.parse import urlparse
+from tempfile import NamedTemporaryFile
 import uuid
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
@@ -25,6 +28,7 @@ from app.services.storage import resolve_frame_signed_url, upload_fileobj
 from app.tasks.frames import ingest_and_tag_frame
 
 router = APIRouter(prefix="/frames", tags=["frames"])
+logger = logging.getLogger(__name__)
 
 
 class FrameFilters(BaseModel):
@@ -43,6 +47,10 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
     return {
         "id": frame.id,
         "movie_id": frame.movie_id,
+        "predicted_movie_id": frame.predicted_movie_id,
+        "match_confidence": frame.match_confidence,
+        "predicted_timestamp": frame.predicted_timestamp,
+        "predicted_shot_id": frame.predicted_shot_id,
         "file_path": frame.file_path,
         "storage_uri": frame.storage_uri,
         "signed_url": signed_url,
@@ -81,7 +89,7 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
 
 
 def _apply_filters(query, filters: FrameFilters):
-    if filters.movie_id:
+    if filters.movie_id is not None:
         query = query.filter(Frame.movie_id == filters.movie_id)
     if filters.status:
         query = query.filter(Frame.status == filters.status)
@@ -137,7 +145,7 @@ def list_frames(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections),
         )
-        .join(Movie)
+        .outerjoin(Movie, Frame.movie_id == Movie.id)
     )
     filtered = _apply_filters(base_query, filters)
     total = filtered.distinct().count()
@@ -252,7 +260,7 @@ def analyze_frame(
 
 
 class IngestRequest(BaseModel):
-    movie_id: int
+    movie_id: int | None = None
     storage_uri: str | None = None
     file_path: str
     signed_url: str | None = None
@@ -291,28 +299,38 @@ def enqueue_ingest(
 
 @router.post("/ingest/upload")
 async def upload_and_ingest(
-    movie_id: int = Form(..., description="Database movie id"),
+    movie_id: int | None = Form(
+        None, description="Database movie id if already known"
+    ),
     file: UploadFile = File(...),
     _: object = Depends(require_role("moderator", "admin")),
 ) -> dict[str, str | int]:
     object_key = f"uploads/{uuid.uuid4().hex}-{file.filename}"
+    storage_uri: str | None = None
+    payload_path = file.filename
     file.file.seek(0)
+    payload = file.file.read()
     try:
         storage_uri = upload_fileobj(
-            file.file,
+            BytesIO(payload),
             key=object_key,
             content_type=file.content_type,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+        logger.warning("Upload failed, storing frame locally instead: %s", exc)
+        temp_file = NamedTemporaryFile(delete=False, suffix=file.filename)
+        temp_file.write(payload)
+        temp_file.flush()
+        payload_path = temp_file.name
     finally:
         try:
             file.file.close()
         except Exception:
             pass
 
+    storage_uri = storage_uri or payload_path
     async_result = ingest_and_tag_frame.delay(
-        file_path=file.filename,
+        file_path=payload_path,
         movie_id=movie_id,
         storage_uri=storage_uri,
     )

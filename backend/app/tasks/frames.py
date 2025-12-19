@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import get_settings
 from app.db import SessionLocal
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
+from app.services.film_matcher import FilmMatcher
 from app.services.storage import download_to_path
 from app.services.vision import detect_faces, encode_image_with_clip
 from datetime import datetime
@@ -123,6 +124,35 @@ def _compute_embedding(image: Image.Image, dimensions: int = 128) -> list[float]
     norm = np.linalg.norm(vector) or 1.0
     normalized = vector / norm
     return [round(float(value), 6) for value in normalized.tolist()[:dimensions]]
+
+
+def _match_frame_with_known_movies(
+    session: Session, frame: Frame
+) -> dict[str, Any] | None:
+    matcher = FilmMatcher(session)
+    embedding = json.loads(frame.embedding) if frame.embedding else []
+
+    # Reset predictions before attempting a new match
+    frame.predicted_movie_id = None
+    frame.match_confidence = None
+    frame.predicted_timestamp = None
+    frame.predicted_shot_id = None
+
+    match = matcher.match_movie(embedding)
+    if match:
+        frame.predicted_movie_id = match["movie_id"]
+        frame.match_confidence = match["confidence"]
+        frame.predicted_timestamp = match.get("timestamp")
+        frame.predicted_shot_id = match.get("shot_id")
+        frame.status = "matched"
+        frame.failure_reason = None
+        session.add(frame)
+        return match
+
+    frame.status = "unmatched"
+    frame.failure_reason = None
+    session.add(frame)
+    return None
 
 
 def _persist_scene_attributes(
@@ -235,12 +265,9 @@ def import_frame(
 ) -> dict[str, Any]:
     """Import a still frame from disk or object storage.
 
-    The task validates the frame location, asserts the movie exists, and persists a
-    ``Frame`` row that downstream tasks can embed and tag.
+    The task validates the frame location, asserts the movie exists (when provided), and
+    persists a ``Frame`` row that downstream tasks can embed and tag.
     """
-
-    if movie_id is None:
-        raise ValueError("movie_id is required to import a frame")
 
     temp_file: Path | None = None
     try:
@@ -265,11 +292,11 @@ def import_frame(
             else:
                 raise
 
-        logger.info("Importing frame from %s for movie %s", path, movie_id)
+        logger.info("Importing frame from %s for movie %s", path, movie_id or "unknown")
 
         with _session_scope(session_factory) as session:
-            movie = session.get(Movie, movie_id)
-            if movie is None:
+            movie = session.get(Movie, movie_id) if movie_id is not None else None
+            if movie_id is not None and movie is None:
                 raise ValueError(f"Movie with id {movie_id} does not exist")
 
             parsed_captured_at = None
@@ -467,76 +494,95 @@ def detect_scene_attributes(
 @shared_task(name="frames.actor_detections")
 def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = None) -> dict[str, Any]:
     settings = get_settings()
+    cleanup = False
+    path: Path | None = None
+    try:
+        with _session_scope(session_factory) as session:
+            frame = session.get(Frame, frame_id)
+            if frame is None:
+                raise ValueError(f"Frame with id {frame_id} does not exist")
 
-    with _session_scope(session_factory) as session:
-        frame = session.get(Frame, frame_id)
-        if frame is None:
-            raise ValueError(f"Frame with id {frame_id} does not exist")
+            # remove existing detections to keep task idempotent
+            session.query(ActorDetection).filter(ActorDetection.frame_id == frame.id).delete()
 
-        # remove existing detections to keep task idempotent
-        session.query(ActorDetection).filter(ActorDetection.frame_id == frame.id).delete()
+            path, cleanup = _materialize_frame(frame)
+            image = _load_image(path)
 
-        path, cleanup = _materialize_frame(frame)
-        image = _load_image(path)
+            try:
+                detected_faces = detect_faces(image, min_confidence=settings.face_min_confidence)
+            except Exception:
+                logger.exception("Falling back to legacy actor detection for frame %s", frame.id)
+                detected_faces = []
 
-        try:
-            detected_faces = detect_faces(image, min_confidence=settings.face_min_confidence)
-        except Exception:
-            logger.exception("Falling back to legacy actor detection for frame %s", frame.id)
-            detected_faces = []
+            from app.models import MovieCast, CastMember  # local import to avoid cycles
 
-        from app.models import MovieCast, CastMember  # local import to avoid cycles
+            cast_member_ids = [
+                cast_member_id
+                for (cast_member_id,) in (
+                    session.query(CastMember.id)
+                        .join(MovieCast, MovieCast.cast_member_id == CastMember.id)
+                        .filter(MovieCast.movie_id == frame.movie_id)
+                        .order_by(MovieCast.cast_order)
+                        .all()
+                )
+            ]
 
-        cast_member_ids = [
-            cast_member_id
-            for (cast_member_id,) in (
-                session.query(CastMember.id)
-                    .join(MovieCast, MovieCast.cast_member_id == CastMember.id)
-                    .filter(MovieCast.movie_id == frame.movie_id)
-                    .order_by(MovieCast.cast_order)
-                    .all()
-            )
-        ]
+            persisted: list[dict[str, Any]] = []
+            for index, face in enumerate(detected_faces):
+                cast_member_id = cast_member_ids[index] if index < len(cast_member_ids) else None
+                bbox = ",".join(f"{value:.2f}" for value in face.bbox) if face.bbox else None
+                if face.confidence < settings.face_min_confidence:
+                    cast_member_id = None
+                detection = ActorDetection(
+                    frame_id=frame.id,
+                    cast_member_id=cast_member_id,
+                    face_index=index,
+                    confidence=round(face.confidence, 3),
+                    bbox=bbox,
+                )
+                session.add(detection)
+                persisted.append(
+                    {
+                        "cast_member_id": cast_member_id,
+                        "confidence": detection.confidence,
+                        "bbox": face.bbox,
+                    }
+                )
 
-        persisted: list[dict[str, Any]] = []
-        for index, face in enumerate(detected_faces):
-            cast_member_id = cast_member_ids[index] if index < len(cast_member_ids) else None
-            bbox = ",".join(f"{value:.2f}" for value in face.bbox) if face.bbox else None
-            if face.confidence < settings.face_min_confidence:
-                cast_member_id = None
-            detection = ActorDetection(
-                frame_id=frame.id,
-                cast_member_id=cast_member_id,
-                face_index=index,
-                confidence=round(face.confidence, 3),
-                bbox=bbox,
-            )
-            session.add(detection)
-            persisted.append(
-                {
-                    "cast_member_id": cast_member_id,
-                    "confidence": detection.confidence,
-                    "bbox": face.bbox,
-                }
-            )
+            if not persisted and not detected_faces:
+                persisted = _persist_actor_detections(session, frame)
 
-        if not persisted and not detected_faces:
-            persisted = _persist_actor_detections(session, frame)
-
-        frame.failure_reason = None
-        frame.status = "actors_detected"
-        session.add(frame)
-        return {
-            "status": "actors_detected",
-            "frame_id": frame.id,
-            "detections": persisted,
-        }
+            frame.failure_reason = None
+            frame.status = "actors_detected"
+            session.add(frame)
+            return {
+                "status": "actors_detected",
+                "frame_id": frame.id,
+                "detections": persisted,
+            }
     finally:
-        if cleanup and path.exists():
+        if cleanup and path and path.exists():
             try:
                 path.unlink()
             except Exception:
                 logger.warning("Could not cleanup face detection temp file for frame %s", frame_id)
+
+
+def _match_frame(
+    frame_id: int, session_factory: SessionFactory | None = None
+) -> dict[str, Any]:
+    with _session_scope(session_factory) as session:
+        frame = session.get(Frame, frame_id)
+        if frame is None:
+            raise ValueError(f"Frame with id {frame_id} does not exist")
+        match = _match_frame_with_known_movies(session, frame)
+        return {
+            "status": "matched" if match else "unmatched",
+            "predicted_movie_id": frame.predicted_movie_id,
+            "match_confidence": frame.match_confidence,
+            "predicted_timestamp": frame.predicted_timestamp,
+            "predicted_shot_id": frame.predicted_shot_id,
+        }
 
 
 @shared_task(
@@ -549,12 +595,12 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
 def ingest_and_tag_frame(
     self,
     file_path: str,
-    movie_id: int,
+    movie_id: int | None = None,
     storage_uri: str | None = None,
     signed_url: str | None = None,
     captured_at: str | None = None,
 ) -> dict[str, Any]:
-    """End-to-end pipeline to import, embed, tag, and annotate a frame."""
+    """End-to-end pipeline to import, embed, and either tag or match a frame."""
 
     started = time.monotonic()
     import_result = import_frame(
@@ -568,9 +614,12 @@ def ingest_and_tag_frame(
 
     try:
         embed_result = embed_frame(frame_id)
-        tag_result = tag_frame(frame_id)
-        scene_result = detect_scene_attributes(frame_id)
-        actor_result = detect_actor_faces(frame_id)
+        if movie_id is None:
+            match_result = _match_frame(frame_id)
+        else:
+            tag_result = tag_frame(frame_id)
+            scene_result = detect_scene_attributes(frame_id)
+            actor_result = detect_actor_faces(frame_id)
     except Exception as exc:  # pragma: no cover - defensive path
         logger.exception("Pipeline failed for frame %s", frame_id)
         _mark_failure(frame_id, str(exc))
@@ -578,7 +627,7 @@ def ingest_and_tag_frame(
 
     with _session_scope() as session:
         frame = session.get(Frame, frame_id)
-        if frame:
+        if frame and movie_id is not None:
             frame.status = "tagged"
             frame.failure_reason = None
             session.add(frame)
@@ -586,13 +635,9 @@ def ingest_and_tag_frame(
     elapsed = round(time.monotonic() - started, 3)
     logger.info("Pipeline completed for frame %s in %ss", frame_id, elapsed)
 
-    return {
-        "frame_id": frame_id,
-        "results": {
-            "import": import_result,
-            "embed": embed_result,
-            "tag": tag_result,
-            "scene": scene_result,
-            "actors": actor_result,
-        },
-    }
+    results: dict[str, Any] = {"import": import_result, "embed": embed_result}
+    if movie_id is None:
+        results["match"] = match_result
+    else:
+        results.update({"tag": tag_result, "scene": scene_result, "actors": actor_result})
+    return {"frame_id": frame_id, "results": results}

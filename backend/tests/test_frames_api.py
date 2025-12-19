@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from app.models import (
     SceneAttribute,
     Tag,
 )
+from app.tasks import frames as frame_tasks
 
 
 def build_app_with_db():
@@ -202,3 +204,73 @@ def test_serialize_frame_generates_signed_url_from_storage(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["signed_url"] == "https://signed.example.com/s3://frames/demo.jpg"
+
+
+def test_get_frame_exposes_prediction_fields():
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        frame_id = seed_frame(session)
+        frame = session.get(Frame, frame_id)
+        movie_id = frame.movie_id
+        frame.predicted_movie_id = movie_id
+        frame.match_confidence = 0.84
+        frame.predicted_timestamp = "00:10:00"
+        frame.predicted_shot_id = "shot-123"
+        session.add(frame)
+        session.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/api/frames/{frame_id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["predicted_movie_id"] == movie_id
+    assert payload["match_confidence"] == 0.84
+    assert payload["predicted_timestamp"] == "00:10:00"
+    assert payload["predicted_shot_id"] == "shot-123"
+
+
+def test_match_frame_updates_predictions():
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        primary_movie = Movie(title="Primary", description="Desc", release_year=2020)
+        secondary_movie = Movie(title="Secondary", description="Desc", release_year=2021)
+        session.add_all([primary_movie, secondary_movie])
+        session.flush()
+
+        primary_frame = Frame(
+            movie_id=primary_movie.id,
+            file_path="/tmp/primary.jpg",
+            embedding=json.dumps([1.0, 0.0]),
+            status="tagged",
+            ingested_at=datetime.utcnow(),
+        )
+        secondary_frame = Frame(
+            movie_id=secondary_movie.id,
+            file_path="/tmp/secondary.jpg",
+            embedding=json.dumps([0.0, 1.0]),
+            status="tagged",
+            ingested_at=datetime.utcnow(),
+        )
+        target_frame = Frame(
+            movie_id=None,
+            file_path="/tmp/target.jpg",
+            embedding=json.dumps([1.0, 0.1]),
+            status="embedded",
+            ingested_at=datetime.utcnow(),
+        )
+        session.add_all([primary_frame, secondary_frame, target_frame])
+        session.commit()
+        frame_id = target_frame.id
+        target_movie_id = primary_movie.id
+
+    match_result = frame_tasks._match_frame(frame_id, session_factory=SessionLocal)
+    assert match_result["predicted_movie_id"] == target_movie_id
+    assert match_result["status"] == "matched"
+    assert match_result["match_confidence"] >= 0.5
+
+    with SessionLocal() as session:
+        refreshed = session.get(Frame, frame_id)
+        assert refreshed.predicted_movie_id == target_movie_id
+        assert refreshed.status == "matched"
+        assert refreshed.match_confidence == match_result["match_confidence"]
+        assert refreshed.predicted_shot_id is not None
