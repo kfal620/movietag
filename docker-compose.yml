@@ -29,6 +29,44 @@ services:
     volumes:
       - minio_data:/data
 
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg://movietag:movietag@postgres:5432/movietag
+      APP_CELERY_BROKER_URL: redis://redis:6379/0
+      APP_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_STORAGE_ENDPOINT_URL: http://minio:9000
+      APP_STORAGE_ACCESS_KEY: minioadmin
+      APP_STORAGE_SECRET_KEY: minioadmin
+      APP_STORAGE_FRAMES_BUCKET: frames
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg://movietag:movietag@postgres:5432/movietag
+      APP_CELERY_BROKER_URL: redis://redis:6379/0
+      APP_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_STORAGE_ENDPOINT_URL: http://minio:9000
+      APP_STORAGE_ACCESS_KEY: minioadmin
+      APP_STORAGE_SECRET_KEY: minioadmin
+      APP_STORAGE_FRAMES_BUCKET: frames
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    command: celery -A app.core.celery.celery_app worker --loglevel=info
+
 volumes:
   postgres_data:
   minio_data:

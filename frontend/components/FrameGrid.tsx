@@ -3,8 +3,8 @@ import { FrameCard } from "./FrameCard";
 
 type Props = {
   frames: Frame[];
-  selectedId?: string;
-  onSelect: (id: string) => void;
+  selectedId?: number;
+  onSelect: (id: number) => void;
 };
 
 export function FrameGrid({ frames, selectedId, onSelect }: Props) {

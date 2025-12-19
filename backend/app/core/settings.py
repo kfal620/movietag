@@ -49,6 +49,22 @@ class Settings(BaseSettings):
         default="https://api.themoviedb.org/3",
         validation_alias=AliasChoices("APP_TMDB_BASE_URL", "TMDB_BASE_URL"),
     )
+    storage_endpoint_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("APP_STORAGE_ENDPOINT_URL", "STORAGE_ENDPOINT_URL"),
+    )
+    storage_access_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("APP_STORAGE_ACCESS_KEY", "STORAGE_ACCESS_KEY"),
+    )
+    storage_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("APP_STORAGE_SECRET_KEY", "STORAGE_SECRET_KEY"),
+    )
+    storage_frames_bucket: str | None = Field(
+        default="frames",
+        validation_alias=AliasChoices("APP_STORAGE_FRAMES_BUCKET", "STORAGE_FRAMES_BUCKET"),
+    )
 
 
 @lru_cache

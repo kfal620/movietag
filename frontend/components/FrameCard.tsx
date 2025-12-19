@@ -4,18 +4,23 @@ import { Frame } from "../lib/types";
 type Props = {
   frame: Frame;
   isActive: boolean;
-  onSelect: (frameId: string) => void;
+  onSelect: (frameId: number) => void;
 };
 
 const statusBadge = {
+  pending: { label: "Pending", className: "badge" },
   new: { label: "New", className: "badge badge--warning" },
   needs_review: { label: "Needs review", className: "badge badge--danger" },
   confirmed: { label: "Confirmed", className: "badge badge--success" },
   overridden: { label: "Overridden", className: "badge" },
+  tagged: { label: "Tagged", className: "badge badge--success" },
+  embedded: { label: "Embedded", className: "badge" },
+  scene_annotated: { label: "Scene ready", className: "badge" },
+  actors_detected: { label: "Actors detected", className: "badge badge--success" },
 } as const;
 
 export function FrameCard({ frame, isActive, onSelect }: Props) {
-  const badge = statusBadge[frame.status];
+  const badge = statusBadge[frame.status] ?? statusBadge.pending;
 
   return (
     <article
@@ -48,9 +53,7 @@ export function FrameCard({ frame, isActive, onSelect }: Props) {
                     : ""
             }`}
           />
-          <span className="chip chip--muted">
-            {frame.approvedPrediction?.title ?? frame.predictions[0]?.title}
-          </span>
+          {frame.tags?.length ? <span className="chip chip--muted">{frame.tags.join(", ")}</span> : null}
         </div>
       </div>
     </article>

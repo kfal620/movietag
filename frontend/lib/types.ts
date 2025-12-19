@@ -6,15 +6,17 @@ export type Prediction = {
 };
 
 export type Frame = {
-  id: string;
+  id: number;
+  movieId: number;
   movieTitle: string;
   imageUrl: string;
-  sceneTime: string;
-  ingestSource: string;
+  ingestSource?: string;
   predictions: Prediction[];
   approvedPrediction?: Prediction;
   overrideTitle?: string;
-  status: "new" | "needs_review" | "confirmed" | "overridden";
+  status: "pending" | "new" | "needs_review" | "confirmed" | "overridden" | "tagged" | "embedded" | "scene_annotated" | "actors_detected";
   notes?: string;
   tags?: string[];
+  sceneAttributes?: { attribute: string; value: string; confidence?: number }[];
+  actors?: { castMemberId: number | null; confidence?: number }[];
 };

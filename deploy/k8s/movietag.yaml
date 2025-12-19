@@ -1,0 +1,227 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: movietag
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movietag-api
+  namespace: movietag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: movietag-api
+  template:
+    metadata:
+      labels:
+        app: movietag-api
+    spec:
+      containers:
+        - name: api
+          image: movietag-api:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: APP_DATABASE_URL
+              value: postgresql+psycopg://movietag:movietag@postgres.movietag.svc.cluster.local:5432/movietag
+            - name: APP_CELERY_BROKER_URL
+              value: redis://redis.movietag.svc.cluster.local:6379/0
+            - name: APP_CELERY_RESULT_BACKEND
+              value: redis://redis.movietag.svc.cluster.local:6379/1
+            - name: APP_STORAGE_ENDPOINT_URL
+              value: http://minio.movietag.svc.cluster.local:9000
+            - name: APP_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: access_key
+            - name: APP_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: secret_key
+          ports:
+            - containerPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movietag-worker
+  namespace: movietag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: movietag-worker
+  template:
+    metadata:
+      labels:
+        app: movietag-worker
+    spec:
+      containers:
+        - name: worker
+          image: movietag-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.core.celery.celery_app", "worker", "--loglevel=info"]
+          env:
+            - name: APP_DATABASE_URL
+              value: postgresql+psycopg://movietag:movietag@postgres.movietag.svc.cluster.local:5432/movietag
+            - name: APP_CELERY_BROKER_URL
+              value: redis://redis.movietag.svc.cluster.local:6379/0
+            - name: APP_CELERY_RESULT_BACKEND
+              value: redis://redis.movietag.svc.cluster.local:6379/1
+            - name: APP_STORAGE_ENDPOINT_URL
+              value: http://minio.movietag.svc.cluster.local:9000
+            - name: APP_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: access_key
+            - name: APP_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: secret_key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: movietag-api
+  namespace: movietag
+spec:
+  selector:
+    app: movietag-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-creds
+  namespace: movietag
+type: Opaque
+stringData:
+  access_key: minioadmin
+  secret_key: minioadmin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: movietag
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: movietag
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: movietag
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: movietag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_USER
+              value: movietag
+            - name: POSTGRES_PASSWORD
+              value: movietag
+            - name: POSTGRES_DB
+              value: movietag
+          ports:
+            - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: movietag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: movietag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2024-01-18T20-41-23Z
+          args: ["server", "/data"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: minioadmin
+            - name: MINIO_ROOT_PASSWORD
+              value: minioadmin
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001

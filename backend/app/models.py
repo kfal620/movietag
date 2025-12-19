@@ -11,7 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -34,6 +34,11 @@ class Movie(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    frames = relationship("Frame", back_populates="movie", cascade="all, delete")
+    cast_members = relationship(
+        "MovieCast", back_populates="movie", cascade="all, delete"
+    )
+    artwork = relationship("Artwork", back_populates="movie", cascade="all, delete")
 
 
 class CastMember(Base):
@@ -53,6 +58,7 @@ class CastMember(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    movies = relationship("MovieCast", back_populates="cast_member", cascade="all, delete")
 
 
 class MovieCast(Base):
@@ -80,6 +86,8 @@ class MovieCast(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    movie = relationship("Movie", back_populates="cast_members")
+    cast_member = relationship("CastMember", back_populates="movies")
 
 
 class Artwork(Base):
@@ -107,6 +115,7 @@ class Artwork(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    movie = relationship("Movie", back_populates="artwork")
 
 
 class Frame(Base):
@@ -117,7 +126,15 @@ class Frame(Base):
         Integer, ForeignKey("movies.id", ondelete="CASCADE"), nullable=False, index=True
     )
     file_path = Column(String(512), nullable=False)
+    storage_uri = Column(String(512), nullable=True)
+    signed_url = Column(String(1024), nullable=True)
+    status = Column(String(50), nullable=False, server_default="pending")
+    ingested_at = Column(DateTime(timezone=True), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=True)
     embedding = Column(Text, nullable=True)
+    embedding_model = Column(String(100), nullable=True)
+    ingest_task_id = Column(String(255), nullable=True, index=True)
+    tagging_task_id = Column(String(255), nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -126,6 +143,14 @@ class Frame(Base):
         nullable=False,
         server_default=func.now(),
         server_onupdate=func.now(),
+    )
+    movie = relationship("Movie", back_populates="frames")
+    tags = relationship("FrameTag", back_populates="frame", cascade="all, delete")
+    scene_attributes = relationship(
+        "SceneAttribute", back_populates="frame", cascade="all, delete"
+    )
+    actor_detections = relationship(
+        "ActorDetection", back_populates="frame", cascade="all, delete"
     )
 
 
@@ -145,6 +170,7 @@ class Tag(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    frames = relationship("FrameTag", back_populates="tag", cascade="all, delete")
 
 
 class FrameTag(Base):
@@ -168,3 +194,64 @@ class FrameTag(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
     )
+    frame = relationship("Frame", back_populates="tags")
+    tag = relationship("Tag", back_populates="frames")
+
+
+class SceneAttribute(Base):
+    __tablename__ = "scene_attributes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    frame_id = Column(
+        Integer, ForeignKey("frames.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attribute = Column(String(100), nullable=False)
+    value = Column(String(255), nullable=False)
+    confidence = Column(Float, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+    )
+    frame = relationship("Frame", back_populates="scene_attributes")
+
+
+class ActorDetection(Base):
+    __tablename__ = "actor_detections"
+    __table_args__ = (
+        UniqueConstraint(
+            "frame_id",
+            "cast_member_id",
+            "face_index",
+            name="uq_actor_detection_frame_cast",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    frame_id = Column(
+        Integer, ForeignKey("frames.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cast_member_id = Column(
+        Integer,
+        ForeignKey("cast_members.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    face_index = Column(Integer, nullable=True)
+    confidence = Column(Float, nullable=True)
+    bbox = Column(String(255), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+    )
+    frame = relationship("Frame", back_populates="actor_detections")
+    cast_member = relationship("CastMember")

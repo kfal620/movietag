@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .api.routes import health
+from .api.routes import frames, health, movies
 from .core.settings import get_settings
 
 
@@ -11,6 +11,8 @@ def create_application() -> FastAPI:
 
     api_prefix = "/api"
     app.include_router(health.router, prefix=api_prefix, tags=["health"])
+    app.include_router(frames.router, prefix=api_prefix)
+    app.include_router(movies.router, prefix=api_prefix)
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
