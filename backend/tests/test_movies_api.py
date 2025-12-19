@@ -14,6 +14,8 @@ def setup_app():
 
     os.environ["CELERY_BROKER_URL"] = "memory://"
     os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
+    os.environ["MODERATOR_TOKEN"] = "moderator-token"
+    os.environ["ADMIN_TOKEN"] = "admin-token"
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -62,6 +64,10 @@ def test_ingest_tmdb_movie_enqueues_task(monkeypatch):
     from app.api import routes as routes_pkg
     monkeypatch.setattr(routes_pkg.movies, "ingest_movie_from_tmdb", FakeTask())
     client = TestClient(app)
-    response = client.post("/api/movies/ingest", json={"tmdb_id": 550})
+    response = client.post(
+        "/api/movies/ingest",
+        json={"tmdb_id": 550},
+        headers={"Authorization": "Bearer moderator-token"},
+    )
     assert response.status_code == 200
     assert response.json()["task_id"] == "tmdb-1"

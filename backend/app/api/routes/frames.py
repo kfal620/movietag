@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.auth import require_role
 from app.core.celery import celery_app
 from app.db import get_db
 from app.models import (
@@ -171,7 +172,10 @@ class TagUpdateRequest(BaseModel):
 
 @router.post("/{frame_id}/tags")
 def replace_frame_tags(
-    frame_id: int, payload: TagUpdateRequest, db: Session = Depends(get_db)
+    frame_id: int,
+    payload: TagUpdateRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
 ) -> dict[str, Any]:
     frame = db.get(Frame, frame_id)
     if frame is None:
@@ -206,7 +210,10 @@ class FrameStatusUpdate(BaseModel):
 
 @router.post("/{frame_id}/status")
 def update_frame_status(
-    frame_id: int, payload: FrameStatusUpdate, db: Session = Depends(get_db)
+    frame_id: int,
+    payload: FrameStatusUpdate,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
 ) -> dict[str, Any]:
     frame = db.get(Frame, frame_id)
     if frame is None:
@@ -227,7 +234,9 @@ class IngestRequest(BaseModel):
 
 
 @router.post("/ingest")
-def enqueue_ingest(payload: IngestRequest) -> dict[str, str | int]:
+def enqueue_ingest(
+    payload: IngestRequest, _: object = Depends(require_role("moderator", "admin"))
+) -> dict[str, str | int]:
     async_result = ingest_and_tag_frame.delay(
         file_path=payload.file_path,
         movie_id=payload.movie_id,
@@ -242,6 +251,7 @@ def enqueue_ingest(payload: IngestRequest) -> dict[str, str | int]:
 async def upload_and_ingest(
     movie_id: int = Form(..., description="Database movie id"),
     file: UploadFile = File(...),
+    _: object = Depends(require_role("moderator", "admin")),
 ) -> dict[str, str | int]:
     destination = Path("/tmp/uploads")
     destination.mkdir(parents=True, exist_ok=True)

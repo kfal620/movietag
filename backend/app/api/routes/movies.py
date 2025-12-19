@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.auth import require_role
 from app.core.celery import celery_app
 from app.db import get_db
 from app.models import Artwork, CastMember, Movie, MovieCast
@@ -89,7 +90,9 @@ class TMDBIngestRequest(BaseModel):
 
 
 @router.post("/ingest")
-def ingest_tmdb_movie(payload: TMDBIngestRequest) -> dict[str, str]:
+def ingest_tmdb_movie(
+    payload: TMDBIngestRequest, _: object = Depends(require_role("moderator", "admin"))
+) -> dict[str, str]:
     async_result = ingest_movie_from_tmdb.delay(payload.tmdb_id)
     return {"task_id": async_result.id, "status": "queued"}
 
