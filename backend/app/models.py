@@ -133,6 +133,8 @@ class Frame(Base):
     captured_at = Column(DateTime(timezone=True), nullable=True)
     embedding = Column(Text, nullable=True)
     embedding_model = Column(String(100), nullable=True)
+    embedding_model_version = Column(String(100), nullable=True)
+    failure_reason = Column(Text, nullable=True)
     ingest_task_id = Column(String(255), nullable=True, index=True)
     tagging_task_id = Column(String(255), nullable=True, index=True)
     created_at = Column(

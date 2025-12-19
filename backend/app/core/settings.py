@@ -77,6 +77,25 @@ class Settings(BaseSettings):
         default=0.9,
         validation_alias=AliasChoices("APP_FACE_MIN_CONFIDENCE", "FACE_MIN_CONFIDENCE"),
     )
+    embedding_service_url: str | None = Field(
+        default=None,
+        description="Optional HTTP endpoint for an embedding service (CLIP/ViT).",
+        validation_alias=AliasChoices(
+            "APP_EMBEDDING_SERVICE_URL", "EMBEDDING_SERVICE_URL"
+        ),
+    )
+    embedding_model_version: str | None = Field(
+        default=None,
+        description="Model revision or ONNX path for embeddings.",
+        validation_alias=AliasChoices(
+            "APP_EMBEDDING_MODEL_VERSION", "EMBEDDING_MODEL_VERSION"
+        ),
+    )
+    vision_model_path: str | None = Field(
+        default=None,
+        description="Optional local ONNX/weights path for scene/vision models.",
+        validation_alias=AliasChoices("APP_VISION_MODEL_PATH", "VISION_MODEL_PATH"),
+    )
     admin_token: str = Field(
         default="admin-token",
         validation_alias=AliasChoices("APP_ADMIN_TOKEN", "ADMIN_TOKEN"),

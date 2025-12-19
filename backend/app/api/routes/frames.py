@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
-from pathlib import Path
+from typing import Any
+from celery import chain
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from urllib.parse import urlparse
+import uuid
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
 
@@ -19,7 +21,7 @@ from app.models import (
     SceneAttribute,
     Tag,
 )
-from app.services.storage import resolve_frame_signed_url
+from app.services.storage import resolve_frame_signed_url, upload_fileobj
 from app.tasks.frames import ingest_and_tag_frame
 
 router = APIRouter(prefix="/frames", tags=["frames"])
@@ -46,6 +48,8 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
         "signed_url": signed_url,
         "status": frame.status,
         "embedding_model": frame.embedding_model,
+        "embedding_model_version": frame.embedding_model_version,
+        "failure_reason": frame.failure_reason,
         "ingested_at": frame.ingested_at,
         "captured_at": frame.captured_at,
         "created_at": frame.created_at,
@@ -227,6 +231,26 @@ def update_frame_status(
     return {"frame_id": frame.id, "status": frame.status}
 
 
+@router.post("/{frame_id}/analyze")
+def analyze_frame(
+    frame_id: int,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    pipeline = chain(
+        celery_app.signature("frames.embed", args=(frame.id,)),
+        celery_app.signature("frames.tag", args=(frame.id,)),
+        celery_app.signature("frames.scene_attributes", args=(frame.id,)),
+        celery_app.signature("frames.actor_detections", args=(frame.id,)),
+    )
+    async_result = pipeline.apply_async()
+    return {"task_id": async_result.id, "status": "queued", "frame_id": frame.id}
+
+
 class IngestRequest(BaseModel):
     movie_id: int
     storage_uri: str | None = None
@@ -235,10 +259,26 @@ class IngestRequest(BaseModel):
     captured_at: str | None = None
 
 
+def _validate_location(file_path: str, signed_url: str | None) -> None:
+    parsed_file = urlparse(file_path)
+    parsed_signed = urlparse(signed_url) if signed_url else None
+
+    allowed_schemes = {"s3", "http", "https", ""}
+    if parsed_file.scheme and parsed_file.scheme not in allowed_schemes:
+        raise HTTPException(status_code=400, detail="Unsupported file_path scheme")
+    if parsed_signed and parsed_signed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="signed_url must be http/https")
+
+    if parsed_file.scheme in {"http", "https"} and not signed_url:
+        # Require explicit signed URL if ingesting via remote HTTP
+        raise HTTPException(status_code=400, detail="signed_url is required for remote http/https ingest")
+
+
 @router.post("/ingest")
 def enqueue_ingest(
     payload: IngestRequest, _: object = Depends(require_role("moderator", "admin"))
 ) -> dict[str, str | int]:
+    _validate_location(payload.file_path, payload.signed_url)
     async_result = ingest_and_tag_frame.delay(
         file_path=payload.file_path,
         movie_id=payload.movie_id,
@@ -255,18 +295,28 @@ async def upload_and_ingest(
     file: UploadFile = File(...),
     _: object = Depends(require_role("moderator", "admin")),
 ) -> dict[str, str | int]:
-    destination = Path("/tmp/uploads")
-    destination.mkdir(parents=True, exist_ok=True)
-    target = destination / file.filename
-    content = await file.read()
-    target.write_bytes(content)
+    object_key = f"uploads/{uuid.uuid4().hex}-{file.filename}"
+    file.file.seek(0)
+    try:
+        storage_uri = upload_fileobj(
+            file.file,
+            key=object_key,
+            content_type=file.content_type,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
 
     async_result = ingest_and_tag_frame.delay(
-        file_path=str(target),
+        file_path=file.filename,
         movie_id=movie_id,
-        storage_uri=None,
+        storage_uri=storage_uri,
     )
-    return {"task_id": async_result.id, "status": "queued", "file_path": str(target)}
+    return {"task_id": async_result.id, "status": "queued", "storage_uri": storage_uri}
 
 
 @router.get("/tasks/{task_id}")

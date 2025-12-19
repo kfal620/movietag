@@ -8,9 +8,10 @@ import re
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+import time
 from typing import Any, Iterable
 
-import boto3
 import numpy as np
 from PIL import Image
 from celery import shared_task
@@ -19,7 +20,9 @@ from sqlalchemy.orm import Session
 from app.core.settings import get_settings
 from app.db import SessionLocal
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
+from app.services.storage import download_to_path
 from app.services.vision import detect_faces, encode_image_with_clip
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +125,9 @@ def _compute_embedding(image: Image.Image, dimensions: int = 128) -> list[float]
     return [round(float(value), 6) for value in normalized.tolist()[:dimensions]]
 
 
-def _persist_scene_attributes(session: Session, frame: Frame, embedding: list[float]) -> list[dict[str, Any]]:
+def _persist_scene_attributes(
+    session: Session, frame: Frame, embedding: list[float], *, min_confidence: float = 0.35
+) -> list[dict[str, Any]]:
     time_of_day_score = embedding[0] if embedding else 0.5
     attribute_rows = [
         ("time_of_day", "night" if time_of_day_score < 0.45 else "day", 1 - abs(0.5 - time_of_day_score)),
@@ -130,14 +135,15 @@ def _persist_scene_attributes(session: Session, frame: Frame, embedding: list[fl
     ]
     applied: list[dict[str, Any]] = []
     for attribute, value, confidence in attribute_rows:
+        value_to_store = value if confidence >= min_confidence else "unknown"
         record = SceneAttribute(
             frame_id=frame.id,
             attribute=attribute,
-            value=value,
+            value=value_to_store,
             confidence=round(float(confidence), 3),
         )
         session.add(record)
-        applied.append({"attribute": attribute, "value": value, "confidence": record.confidence})
+        applied.append({"attribute": attribute, "value": value_to_store, "confidence": record.confidence})
     return applied
 
 
@@ -175,19 +181,47 @@ def _ensure_local_copy(file_path: str, storage_uri: str | None) -> Path:
         return path
 
     if storage_uri:
-        settings = get_settings()
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=settings.storage_endpoint_url,
-            aws_access_key_id=settings.storage_access_key,
-            aws_secret_access_key=settings.storage_secret_key,
-        )
-        bucket, key = storage_uri.replace("s3://", "").split("/", 1)
         path.parent.mkdir(parents=True, exist_ok=True)
-        s3.download_file(bucket, key, str(path))
+        download_to_path(storage_uri, str(path))
         return path
 
     raise FileNotFoundError(f"Frame not found at {file_path}")
+
+
+def _mark_failure(frame_id: int, reason: str, session_factory: SessionFactory | None = None) -> None:
+    with _session_scope(session_factory) as session:
+        frame = session.get(Frame, frame_id)
+        if frame is None:
+            return
+        frame.failure_reason = reason
+        frame.status = "failed"
+        session.add(frame)
+
+
+def _materialize_frame(frame: Frame) -> tuple[Path, bool]:
+    """Return a path to the frame contents, downloading from storage if necessary."""
+
+    try:
+        return _ensure_local_copy(frame.file_path, frame.storage_uri), False
+    except FileNotFoundError:
+        pass
+
+    if frame.storage_uri:
+        temp = NamedTemporaryFile(delete=False, suffix=Path(frame.file_path).suffix or ".img")
+        download_to_path(frame.storage_uri, temp.name)
+        return Path(temp.name), True
+
+    if frame.signed_url:
+        import requests
+
+        response = requests.get(frame.signed_url, timeout=30)
+        response.raise_for_status()
+        temp = NamedTemporaryFile(delete=False, suffix=Path(frame.file_path).suffix or ".img")
+        temp.write(response.content)
+        temp.flush()
+        return Path(temp.name), True
+
+    raise FileNotFoundError("Frame content is unavailable (no storage_uri or signed_url)")
 
 
 @shared_task(name="frames.import")
@@ -208,43 +242,70 @@ def import_frame(
     if movie_id is None:
         raise ValueError("movie_id is required to import a frame")
 
-    path = _ensure_local_copy(file_path, storage_uri)
+    temp_file: Path | None = None
+    try:
+        try:
+            path = _ensure_local_copy(file_path, storage_uri)
+        except FileNotFoundError:
+            if storage_uri:
+                temp = NamedTemporaryFile(delete=False)
+                download_to_path(storage_uri, temp.name)
+                path = Path(temp.name)
+                temp_file = path
+            elif signed_url:
+                import requests
 
-    logger.info("Importing frame from %s for movie %s", path, movie_id)
+                response = requests.get(signed_url, timeout=30)
+                response.raise_for_status()
+                temp = NamedTemporaryFile(delete=False)
+                temp.write(response.content)
+                temp.flush()
+                path = Path(temp.name)
+                temp_file = path
+            else:
+                raise
 
-    with _session_scope(session_factory) as session:
-        movie = session.get(Movie, movie_id)
-        if movie is None:
-            raise ValueError(f"Movie with id {movie_id} does not exist")
+        logger.info("Importing frame from %s for movie %s", path, movie_id)
 
-        parsed_captured_at = None
-        if captured_at:
+        with _session_scope(session_factory) as session:
+            movie = session.get(Movie, movie_id)
+            if movie is None:
+                raise ValueError(f"Movie with id {movie_id} does not exist")
+
+            parsed_captured_at = None
+            if captured_at:
+                try:
+                    parsed_captured_at = datetime.fromisoformat(captured_at)
+                except Exception:
+                    parsed_captured_at = None
+
+            frame = Frame(
+                movie_id=movie_id,
+                file_path=str(path),
+                storage_uri=storage_uri,
+                signed_url=signed_url,
+                captured_at=parsed_captured_at,
+                ingested_at=datetime.utcnow(),
+                status="new",
+                failure_reason=None,
+            )
+            session.add(frame)
+            session.flush()
+            session.refresh(frame)
+
+            return {
+                "status": "imported",
+                "frame_id": frame.id,
+                "file_path": frame.file_path,
+                "movie_id": frame.movie_id,
+                "storage_uri": frame.storage_uri,
+            }
+    finally:
+        if temp_file and temp_file.exists():
             try:
-                from datetime import datetime
-
-                parsed_captured_at = datetime.fromisoformat(captured_at)
+                temp_file.unlink()
             except Exception:
-                parsed_captured_at = None
-
-        frame = Frame(
-            movie_id=movie_id,
-            file_path=str(path),
-            storage_uri=storage_uri,
-            signed_url=signed_url,
-            captured_at=parsed_captured_at,
-            status="ingested",
-        )
-        session.add(frame)
-        session.flush()
-        session.refresh(frame)
-
-        return {
-            "status": "imported",
-            "frame_id": frame.id,
-            "file_path": frame.file_path,
-            "movie_id": frame.movie_id,
-            "storage_uri": frame.storage_uri,
-        }
+                logger.warning("Failed to cleanup temp file %s", temp_file)
 
 
 @shared_task(name="frames.embed")
@@ -258,31 +319,60 @@ def embed_frame(
     settings = get_settings()
     clip_model = f"{settings.clip_model_name}:{settings.clip_pretrained}"
     embed_model_name = embedding_model
+    embed_model_version = settings.embedding_model_version or settings.clip_pretrained
 
     with _session_scope(session_factory) as session:
         frame = session.get(Frame, frame_id)
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
 
+        frame.status = "embedding"
+        frame.failure_reason = None
+        session.add(frame)
+        session.flush()
+
+        path, cleanup = _materialize_frame(frame)
         try:
-            image = _load_image(_ensure_local_copy(frame.file_path, frame.storage_uri))
+            image = _load_image(path)
             try:
-                embedding = encode_image_with_clip(
-                    image=image,
-                    model_name=settings.clip_model_name,
-                    pretrained=settings.clip_pretrained,
-                )
-                embed_model_name = f"clip-{clip_model}"
+                if settings.embedding_service_url:
+                    import requests
+
+                    with open(path, "rb") as handle:
+                        resp = requests.post(
+                            settings.embedding_service_url,
+                            files={"file": handle},
+                            timeout=30,
+                        )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                    embedding = payload.get("embedding")
+                    embed_model_name = payload.get("model", embed_model_name)
+                    embed_model_version = payload.get("version", embed_model_version)
+                else:
+                    embedding = encode_image_with_clip(
+                        image=image,
+                        model_name=settings.clip_model_name,
+                        pretrained=settings.clip_pretrained,
+                    )
+                    embed_model_name = f"clip-{clip_model}"
             except Exception:
                 logger.exception("Falling back to deterministic embedding for frame %s", frame.id)
                 embedding = _compute_embedding(image)
                 embed_model_name = embed_model_name or "rgb-histogram-v1"
-        except FileNotFoundError:
-            embedding = _hash_embedding(frame.file_path.encode())
-            embed_model_name = embed_model_name or "hash-v1"
+        except FileNotFoundError as exc:
+            _mark_failure(frame.id, str(exc))
+            raise
+        finally:
+            if cleanup and path.exists():
+                try:
+                    path.unlink()
+                except Exception:
+                    logger.warning("Could not cleanup temporary file for frame %s", frame.id)
 
         frame.embedding = json.dumps(embedding)
         frame.embedding_model = embed_model_name
+        frame.embedding_model_version = embed_model_version
         frame.status = "embedded"
         session.add(frame)
 
@@ -293,6 +383,7 @@ def embed_frame(
             "frame_id": frame.id,
             "embedding_dimensions": len(embedding),
             "embedding_model": embed_model_name,
+            "embedding_model_version": embed_model_version,
         }
 
 
@@ -341,6 +432,7 @@ def tag_frame(
 
             applied_tags.append({"name": tag.name, "confidence": confidence})
 
+        frame.failure_reason = None
         frame.status = "tagged"
         session.add(frame)
 
@@ -358,8 +450,13 @@ def detect_scene_attributes(
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
 
+        # Idempotency: clear prior predictions
+        session.query(SceneAttribute).filter(SceneAttribute.frame_id == frame.id).delete()
+
         embedding = json.loads(frame.embedding) if frame.embedding else []
         applied = _persist_scene_attributes(session, frame, embedding)
+
+        frame.failure_reason = None
         frame.status = "scene_annotated"
         session.add(frame)
 
@@ -376,7 +473,10 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
 
-        path = _ensure_local_copy(frame.file_path, frame.storage_uri)
+        # remove existing detections to keep task idempotent
+        session.query(ActorDetection).filter(ActorDetection.frame_id == frame.id).delete()
+
+        path, cleanup = _materialize_frame(frame)
         image = _load_image(path)
 
         try:
@@ -401,7 +501,9 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
         persisted: list[dict[str, Any]] = []
         for index, face in enumerate(detected_faces):
             cast_member_id = cast_member_ids[index] if index < len(cast_member_ids) else None
-            bbox = ",".join(f"{value:.2f}" for value in face.bbox)
+            bbox = ",".join(f"{value:.2f}" for value in face.bbox) if face.bbox else None
+            if face.confidence < settings.face_min_confidence:
+                cast_member_id = None
             detection = ActorDetection(
                 frame_id=frame.id,
                 cast_member_id=cast_member_id,
@@ -421,6 +523,7 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
         if not persisted and not detected_faces:
             persisted = _persist_actor_detections(session, frame)
 
+        frame.failure_reason = None
         frame.status = "actors_detected"
         session.add(frame)
         return {
@@ -428,10 +531,23 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
             "frame_id": frame.id,
             "detections": persisted,
         }
+    finally:
+        if cleanup and path.exists():
+            try:
+                path.unlink()
+            except Exception:
+                logger.warning("Could not cleanup face detection temp file for frame %s", frame_id)
 
 
-@shared_task(name="frames.pipeline")
+@shared_task(
+    name="frames.pipeline",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
 def ingest_and_tag_frame(
+    self,
     file_path: str,
     movie_id: int,
     storage_uri: str | None = None,
@@ -440,6 +556,7 @@ def ingest_and_tag_frame(
 ) -> dict[str, Any]:
     """End-to-end pipeline to import, embed, tag, and annotate a frame."""
 
+    started = time.monotonic()
     import_result = import_frame(
         file_path=file_path,
         movie_id=movie_id,
@@ -448,10 +565,26 @@ def ingest_and_tag_frame(
         captured_at=captured_at,
     )
     frame_id = import_result["frame_id"]
-    embed_result = embed_frame(frame_id)
-    tag_result = tag_frame(frame_id)
-    scene_result = detect_scene_attributes(frame_id)
-    actor_result = detect_actor_faces(frame_id)
+
+    try:
+        embed_result = embed_frame(frame_id)
+        tag_result = tag_frame(frame_id)
+        scene_result = detect_scene_attributes(frame_id)
+        actor_result = detect_actor_faces(frame_id)
+    except Exception as exc:  # pragma: no cover - defensive path
+        logger.exception("Pipeline failed for frame %s", frame_id)
+        _mark_failure(frame_id, str(exc))
+        raise
+
+    with _session_scope() as session:
+        frame = session.get(Frame, frame_id)
+        if frame:
+            frame.status = "tagged"
+            frame.failure_reason = None
+            session.add(frame)
+
+    elapsed = round(time.monotonic() - started, 3)
+    logger.info("Pipeline completed for frame %s in %ss", frame_id, elapsed)
 
     return {
         "frame_id": frame_id,
