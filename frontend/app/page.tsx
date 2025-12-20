@@ -45,6 +45,10 @@ type FrameApiItem = {
     confidence?: number;
     face_index?: number | null;
     bbox?: number[] | null;
+    cluster_label?: string | null;
+    track_status?: string | null;
+    emotion?: string | null;
+    pose?: { yaw?: number | null; pitch?: number | null; roll?: number | null };
   }[];
 };
 
@@ -118,6 +122,12 @@ export default function Home() {
               confidence: actor.confidence,
               faceIndex: actor.face_index,
               bbox: actor.bbox,
+              clusterLabel: actor.cluster_label,
+              trackStatus: actor.track_status,
+              emotion: actor.emotion,
+              poseYaw: actor.pose?.yaw ?? null,
+              posePitch: actor.pose?.pitch ?? null,
+              poseRoll: actor.pose?.roll ?? null,
             })) ?? [],
         };
       }) ?? [],
@@ -180,6 +190,12 @@ export default function Home() {
           confidence: actor.confidence,
           face_index: actor.faceIndex,
           bbox: actor.bbox,
+          cluster_label: actor.clusterLabel,
+          track_status: actor.trackStatus,
+          emotion: actor.emotion,
+          pose_yaw: actor.poseYaw,
+          pose_pitch: actor.posePitch,
+          pose_roll: actor.poseRoll,
         })),
       }),
     }).then(() => mutate());

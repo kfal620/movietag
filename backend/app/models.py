@@ -274,6 +274,12 @@ class ActorDetection(Base):
     confidence = Column(Float, nullable=True)
     bbox = Column(String(255), nullable=True)
     embedding = Column(Text, nullable=True)
+    cluster_label = Column(String(100), nullable=True)
+    track_status = Column(String(50), nullable=True)
+    emotion = Column(String(50), nullable=True)
+    pose_yaw = Column(Float, nullable=True)
+    pose_pitch = Column(Float, nullable=True)
+    pose_roll = Column(Float, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

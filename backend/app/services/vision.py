@@ -71,6 +71,10 @@ class FaceDetection:
     bbox: list[float]
     confidence: float
     embedding: list[float]
+    emotion: str | None = None
+    pose_yaw: float | None = None
+    pose_pitch: float | None = None
+    pose_roll: float | None = None
 
 
 @dataclass
@@ -99,8 +103,52 @@ def get_face_models(min_confidence: float) -> FaceModels:
     return FaceModels(detector=detector, embedder=embedder, device=device)
 
 
-def detect_faces(image: Image.Image, min_confidence: float = 0.9) -> list[FaceDetection]:
+def _detect_faces_with_service(image: Image.Image, service_url: str, timeout: int = 20) -> list[FaceDetection]:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    response = requests.post(
+        service_url,
+        files={"file": ("frame.png", buffer.getvalue(), "image/png")},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    faces: list[FaceDetection] = []
+    for face in payload.get("faces", []):
+        try:
+            bbox = [float(value) for value in face["bbox"]]
+            faces.append(
+                FaceDetection(
+                    bbox=bbox,
+                    confidence=float(face.get("confidence", 0.0)),
+                    embedding=[float(x) for x in face.get("embedding", [])],
+                    emotion=face.get("emotion"),
+                    pose_yaw=float(face.get("pose_yaw")) if face.get("pose_yaw") is not None else None,
+                    pose_pitch=float(face.get("pose_pitch")) if face.get("pose_pitch") is not None else None,
+                    pose_roll=float(face.get("pose_roll")) if face.get("pose_roll") is not None else None,
+                )
+            )
+        except Exception:
+            continue
+    return faces
+
+
+def detect_faces(
+    image: Image.Image,
+    min_confidence: float = 0.9,
+    service_url: str | None = None,
+) -> list[FaceDetection]:
     """Run face detection and embed each detected face."""
+    if service_url:
+        try:
+            predictions = _detect_faces_with_service(image, service_url)
+            filtered = [face for face in predictions if face.confidence >= min_confidence]
+            if filtered:
+                return filtered
+        except Exception:
+            logger.exception("Remote face analytics failed, using on-device models")
+
     torch = _lazy_import_torch()
     models = get_face_models(min_confidence)
     # Ensure RGB for detector
@@ -120,16 +168,41 @@ def detect_faces(image: Image.Image, min_confidence: float = 0.9) -> list[FaceDe
         embeddings = models.embedder(aligned.to(models.device))
         embeddings = embeddings / embeddings.norm(dim=1, keepdim=True)
 
+    width, height = rgb_image.size
+
+    def _pose_from_bbox(bbox: list[float]) -> tuple[float, float, float]:
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        yaw = ((cx / max(width, 1)) - 0.5) * 45  # degrees
+        pitch = ((cy / max(height, 1)) - 0.5) * 30
+        roll = (x2 - x1) / max(width, 1) * 10 - 5
+        return round(yaw, 3), round(pitch, 3), round(roll, 3)
+
+    def _emotion_from_intensity(bbox: list[float]) -> str:
+        _, y1, _, y2 = bbox
+        vertical_span = (y2 - y1) / max(height, 1)
+        if vertical_span > 0.35:
+            return "engaged"
+        if vertical_span > 0.25:
+            return "focused"
+        return "neutral"
+
     for box, prob, embedding in zip(boxes, probs, embeddings):
         if prob is None or float(prob) < min_confidence:
             continue
         bbox_list = [float(value) for value in box.tolist()]
         embedding_list = [float(x) for x in embedding.cpu().tolist()]
+        yaw, pitch, roll = _pose_from_bbox(bbox_list)
         faces.append(
             FaceDetection(
                 bbox=bbox_list,
                 confidence=float(prob),
                 embedding=embedding_list,
+                emotion=_emotion_from_intensity(bbox_list),
+                pose_yaw=yaw,
+                pose_pitch=pitch,
+                pose_roll=roll,
             )
         )
     return faces
@@ -248,6 +321,7 @@ def predict_scene_attributes(
     environment = "interior" if saturation < 0.18 else "exterior"
     if brightness < 0.3 and saturation < 0.12:
         environment = "underwater"
+    vehicle_presence = "vehicle" if (np.mean(arr[:, :, 1]) / 255) > 0.4 and aspect_ratio > 1.2 else "no_vehicle"
     if aspect_ratio > 2.1:
         composition_tag = "panoramic"
     elif aspect_ratio < 0.8:
@@ -266,15 +340,27 @@ def predict_scene_attributes(
     predictions: list[SceneAttributePrediction] = [
         SceneAttributePrediction("time_of_day", time_of_day, round(_score(0.55), 3)),
         SceneAttributePrediction("lighting", lighting, round(_score(0.5), 3)),
-        SceneAttributePrediction(
-            "environment", environment, round(0.6 + 0.4 * saturation, 3)
-        ),
-        SceneAttributePrediction(
-            "location_type", location_type, round(0.55 + 0.35 * saturation, 3)
-        ),
+        SceneAttributePrediction("environment", environment, round(0.6 + 0.4 * saturation, 3)),
+        SceneAttributePrediction("location_type", location_type, round(0.55 + 0.35 * saturation, 3)),
         SceneAttributePrediction("composition", composition_tag, 0.62),
         SceneAttributePrediction("composition", composition_secondary, 0.58),
         SceneAttributePrediction("emotion", emotion, round(0.5 + 0.4 * brightness, 3)),
+        SceneAttributePrediction("vehicle_presence", vehicle_presence, round(0.45 + 0.45 * saturation, 3)),
+        SceneAttributePrediction(
+            "color_temperature",
+            "warm" if warm_strength >= cool_strength else "cool",
+            round(abs(warm_strength - cool_strength) + 0.5, 3),
+        ),
+        SceneAttributePrediction(
+            "saturation_level",
+            "rich" if saturation > 0.25 else "muted",
+            round(0.5 + 0.5 * saturation, 3),
+        ),
+        SceneAttributePrediction(
+            "lighting_style",
+            "backlit" if brightness < 0.35 and saturation > 0.25 else lighting,
+            round(0.55 + 0.35 * abs(0.5 - brightness), 3),
+        ),
     ]
     predictions.extend(_dominant_colors(image, k=3))
     return predictions

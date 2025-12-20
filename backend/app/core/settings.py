@@ -116,6 +116,20 @@ class Settings(BaseSettings):
             "APP_FACE_RECOGNITION_MATCH_THRESHOLD", "FACE_RECOGNITION_MATCH_THRESHOLD"
         ),
     )
+    face_unknown_match_threshold: float = Field(
+        default=0.58,
+        description="Cosine similarity threshold for clustering unknown faces.",
+        validation_alias=AliasChoices(
+            "APP_FACE_UNKNOWN_MATCH_THRESHOLD", "FACE_UNKNOWN_MATCH_THRESHOLD"
+        ),
+    )
+    face_analytics_service_url: str | None = Field(
+        default=None,
+        description="HTTP endpoint for production-grade face analytics (emotion/pose/embedding).",
+        validation_alias=AliasChoices(
+            "APP_FACE_ANALYTICS_SERVICE_URL", "FACE_ANALYTICS_SERVICE_URL"
+        ),
+    )
     admin_token: str = Field(
         default="admin-token",
         validation_alias=AliasChoices("APP_ADMIN_TOKEN", "ADMIN_TOKEN"),

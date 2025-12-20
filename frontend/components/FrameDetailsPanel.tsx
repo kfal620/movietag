@@ -101,9 +101,25 @@ export function FrameDetailsPanel({ frame }: Props) {
                   {actor.faceIndex !== undefined && actor.faceIndex !== null ? (
                     <span style={{ marginLeft: 8 }}>Face #{actor.faceIndex}</span>
                   ) : null}
+                  {actor.clusterLabel ? (
+                    <span style={{ marginLeft: 8 }} className="chip chip--muted">
+                      {actor.clusterLabel}
+                    </span>
+                  ) : null}
+                  {actor.trackStatus ? (
+                    <span style={{ marginLeft: 8, color: "var(--muted)" }}>
+                      {actor.trackStatus}
+                    </span>
+                  ) : null}
                 </div>
                 {actor.confidence !== undefined ? (
                   <span className="chip chip--muted">{(actor.confidence * 100).toFixed(1)}%</span>
+                ) : null}
+                {actor.emotion ? <div className="muted">Emotion: {actor.emotion}</div> : null}
+                {actor.poseYaw !== undefined || actor.posePitch !== undefined || actor.poseRoll !== undefined ? (
+                  <div className="muted">
+                    Pose {actor.poseYaw ?? "—"}/{actor.posePitch ?? "—"}/{actor.poseRoll ?? "—"}
+                  </div>
                 ) : null}
               </li>
             ))}
