@@ -93,6 +93,14 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
                 "bbox": [float(value) for value in detection.bbox.split(",")] if detection.bbox else None,
                 "face_index": detection.face_index,
                 "embedding": json.loads(detection.embedding) if detection.embedding else None,
+                "cluster_label": detection.cluster_label,
+                "track_status": detection.track_status,
+                "emotion": detection.emotion,
+                "pose": {
+                    "yaw": detection.pose_yaw,
+                    "pitch": detection.pose_pitch,
+                    "roll": detection.pose_roll,
+                },
             }
             for detection in frame.actor_detections
         ],
@@ -279,6 +287,12 @@ class ActorDetectionPayload(BaseModel):
     confidence: float | None = None
     face_index: int | None = None
     bbox: list[float] | None = None
+    cluster_label: str | None = None
+    track_status: str | None = None
+    emotion: str | None = None
+    pose_yaw: float | None = None
+    pose_pitch: float | None = None
+    pose_roll: float | None = None
 
 
 class ActorDetectionsUpdateRequest(BaseModel):
@@ -308,6 +322,12 @@ def replace_actor_detections(
                 confidence=detection.confidence,
                 face_index=detection.face_index,
                 bbox=bbox,
+                cluster_label=detection.cluster_label,
+                track_status=detection.track_status,
+                emotion=detection.emotion,
+                pose_yaw=detection.pose_yaw,
+                pose_pitch=detection.pose_pitch,
+                pose_roll=detection.pose_roll,
             )
         )
 

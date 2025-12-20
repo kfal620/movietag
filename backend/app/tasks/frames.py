@@ -215,6 +215,7 @@ def _persist_actor_detections(session: Session, frame: Frame) -> list[dict[str, 
             confidence=confidence,
             bbox=f"{0.1 * index},{0.1 * index},0.3,0.3",
             embedding=json.dumps(embedding),
+            track_status="seeded",
         )
         session.add(record)
         detections.append(
@@ -296,6 +297,82 @@ def _best_match_for_face(
     if best_score < threshold:
         return None, best_score
     return best_id, best_score
+
+
+def _cluster_unknown_faces(
+    session: Session,
+    frame: Frame,
+    detections: list[ActorDetection],
+    unknown_threshold: float,
+) -> dict[int, tuple[str, str]]:
+    movie_id = frame.movie_id or frame.predicted_movie_id
+    if movie_id is None:
+        return {}
+
+    existing: list[ActorDetection] = (
+        session.query(ActorDetection)
+        .join(Frame, ActorDetection.frame_id == Frame.id)
+        .filter(
+            Frame.movie_id == movie_id,
+            ActorDetection.cast_member_id.is_(None),
+            ActorDetection.embedding.isnot(None),
+            ActorDetection.cluster_label.isnot(None),
+        )
+        .all()
+    )
+
+    clusters: dict[str, list[list[float]]] = {}
+    for record in existing:
+        try:
+            embedding = json.loads(record.embedding or "[]")
+        except Exception:
+            continue
+        if not embedding:
+            continue
+        clusters.setdefault(record.cluster_label or "unknown", []).append(embedding)
+
+    def _next_cluster_label() -> str:
+        indices = [
+            int(label.split("-")[-1])
+            for label in clusters.keys()
+            if label.startswith("unknown-") and label.split("-")[-1].isdigit()
+        ]
+        next_index = (max(indices) + 1) if indices else 1
+        return f"unknown-{next_index}"
+
+    results: dict[int, tuple[str, str]] = {}
+    for idx, detection in enumerate(detections):
+        if detection.cast_member_id is not None or not detection.embedding:
+            results[idx] = ("identified", detection.cluster_label or "")
+            continue
+
+        best_label: str | None = None
+        best_score = 0.0
+        try:
+            embedding = json.loads(detection.embedding)
+        except Exception:
+            embedding = []
+
+        if not embedding:
+            results[idx] = ("untracked", detection.cluster_label or "")
+            continue
+
+        for label, embeddings in clusters.items():
+            centroid = np.mean(np.asarray(embeddings), axis=0)
+            score = cosine_similarity(embedding, centroid.tolist())
+            if score > best_score:
+                best_score = score
+                best_label = label
+
+        if best_label and best_score >= unknown_threshold:
+            results[idx] = ("tracked", best_label)
+            clusters.setdefault(best_label, []).append(embedding)
+        else:
+            label = _next_cluster_label()
+            clusters.setdefault(label, []).append(embedding)
+            results[idx] = ("new_track", label)
+
+    return results
 
 
 def _ensure_local_copy(file_path: str, storage_uri: str | None) -> Path:
@@ -635,7 +712,11 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
             image = _load_image(path)
 
             try:
-                detected_faces = detect_faces(image, min_confidence=settings.face_min_confidence)
+                detected_faces = detect_faces(
+                    image,
+                    min_confidence=settings.face_min_confidence,
+                    service_url=settings.face_analytics_service_url,
+                )
             except Exception:
                 logger.exception("Falling back to legacy actor detection for frame %s", frame.id)
                 detected_faces = []
@@ -643,6 +724,8 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
             cast_embeddings = _reference_embeddings_for_cast(session, frame, settings)
 
             persisted: list[dict[str, Any]] = []
+            new_records: list[ActorDetection] = []
+            similarities: list[float] = []
             for index, face in enumerate(detected_faces):
                 bbox = ",".join(f"{value:.4f}" for value in face.bbox) if face.bbox else None
                 matched_cast_id, similarity = _best_match_for_face(
@@ -650,6 +733,7 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
                 )
                 if face.confidence < settings.face_min_confidence:
                     matched_cast_id = None
+                    similarity = 0.0
                 combined_confidence = round(min(1.0, face.confidence * max(similarity, 0.5)), 3)
                 detection = ActorDetection(
                     frame_id=frame.id,
@@ -658,14 +742,43 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
                     confidence=combined_confidence,
                     bbox=bbox,
                     embedding=json.dumps(face.embedding),
+                    emotion=face.emotion,
+                    pose_yaw=face.pose_yaw,
+                    pose_pitch=face.pose_pitch,
+                    pose_roll=face.pose_roll,
                 )
                 session.add(detection)
+                new_records.append(detection)
+                similarities.append(similarity)
+
+            clustering = _cluster_unknown_faces(
+                session, frame, new_records, settings.face_unknown_match_threshold
+            )
+
+            for idx, detection in enumerate(new_records):
+                if detection.cast_member_id is not None:
+                    detection.track_status = "identified"
+                    detection.cluster_label = detection.cluster_label
+                elif idx in clustering:
+                    status, label = clustering[idx]
+                    detection.track_status = status
+                    detection.cluster_label = label
+
+                similarity = similarities[idx] if idx < len(similarities) else None
                 persisted.append(
                     {
-                        "cast_member_id": matched_cast_id,
-                        "confidence": combined_confidence,
-                        "bbox": face.bbox,
+                        "cast_member_id": detection.cast_member_id,
+                        "confidence": detection.confidence,
+                        "bbox": [float(v) for v in detection.bbox.split(",")] if detection.bbox else None,
                         "similarity": similarity,
+                        "cluster_label": detection.cluster_label,
+                        "emotion": detection.emotion,
+                        "pose": {
+                            "yaw": detection.pose_yaw,
+                            "pitch": detection.pose_pitch,
+                            "roll": detection.pose_roll,
+                        },
+                        "track_status": detection.track_status,
                     }
                 )
 

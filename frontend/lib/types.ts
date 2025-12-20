@@ -25,6 +25,12 @@ export type ActorDetection = {
   confidence?: number;
   faceIndex?: number | null;
   bbox?: number[] | null;
+   clusterLabel?: string | null;
+   trackStatus?: string | null;
+   emotion?: string | null;
+   poseYaw?: number | null;
+   posePitch?: number | null;
+   poseRoll?: number | null;
 };
 
 export type Frame = {
