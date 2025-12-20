@@ -54,6 +54,8 @@ class CastMember(Base):
     tmdb_id = Column(Integer, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     profile_path = Column(String(512), nullable=True)
+    face_embedding = Column(Text, nullable=True)
+    face_embedding_model = Column(String(100), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -271,6 +273,7 @@ class ActorDetection(Base):
     face_index = Column(Integer, nullable=True)
     confidence = Column(Float, nullable=True)
     bbox = Column(String(255), nullable=True)
+    embedding = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

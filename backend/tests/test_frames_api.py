@@ -206,6 +206,28 @@ def test_serialize_frame_generates_signed_url_from_storage(monkeypatch):
     assert payload["signed_url"] == "https://signed.example.com/s3://frames/demo.jpg"
 
 
+def test_serialize_frame_includes_actor_embedding_and_bbox():
+    app, SessionLocal = build_app_with_db()
+    with SessionLocal() as session:
+        frame_id = seed_frame(session)
+        frame = session.get(Frame, frame_id)
+        detection = (
+            session.query(ActorDetection).filter_by(frame_id=frame.id).one_or_none()
+        )
+        assert detection is not None
+        detection.embedding = json.dumps([0.1, 0.2, 0.3])
+        detection.bbox = "0.1,0.2,0.3,0.4"
+        session.add(detection)
+        session.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/api/frames/{frame_id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["actor_detections"][0]["embedding"] == [0.1, 0.2, 0.3]
+    assert payload["actor_detections"][0]["bbox"] == [0.1, 0.2, 0.3, 0.4]
+
+
 def test_get_frame_exposes_prediction_fields():
     app, SessionLocal = build_app_with_db()
     with SessionLocal() as session:

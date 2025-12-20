@@ -10,7 +10,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
+from typing import Any, Iterable
+import io
+
+import numpy as np
+import requests
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -129,3 +133,148 @@ def detect_faces(image: Image.Image, min_confidence: float = 0.9) -> list[FaceDe
             )
         )
     return faces
+
+
+@dataclass
+class SceneAttributePrediction:
+    attribute: str
+    value: str
+    confidence: float
+
+
+def _normalize(vector: Iterable[float]) -> np.ndarray:
+    arr = np.asarray(list(vector), dtype=float)
+    norm = np.linalg.norm(arr) or 1.0
+    return arr / norm
+
+
+def cosine_similarity(a: Iterable[float], b: Iterable[float]) -> float:
+    lhs = _normalize(a)
+    rhs = _normalize(b)
+    return float(np.dot(lhs, rhs))
+
+
+def encode_face_image(image: Image.Image) -> list[float]:
+    """Encode a cropped face image using the shared embedder."""
+    torch = _lazy_import_torch()
+    models = get_face_models(0.5)
+    rgb_image = image.convert("RGB")
+    boxes, probs = models.detector.detect(rgb_image)
+    if boxes is not None and probs is not None and len(boxes):
+        aligned = models.detector.extract(rgb_image, boxes, save_path=None)
+    else:
+        aligned = None
+
+    if aligned is None:
+        tensor = models.detector._resize(rgb_image)  # type: ignore[attr-defined]
+        if tensor.dim() == 3:
+            tensor = tensor.unsqueeze(0)
+    else:
+        tensor = aligned
+
+    tensor = tensor.to(models.device)
+    with torch.no_grad():
+        embedding = models.embedder(tensor)
+        embedding = embedding / embedding.norm(dim=1, keepdim=True)
+    return [float(x) for x in embedding.squeeze(0).cpu().tolist()]
+
+
+def _dominant_colors(image: Image.Image, k: int = 3) -> list[SceneAttributePrediction]:
+    small = image.convert("RGB").resize((64, 64))
+    pixels = np.array(small).reshape(-1, 3)
+    unique, counts = np.unique(pixels, axis=0, return_counts=True)
+    total = counts.sum() or 1
+    sorted_idx = np.argsort(counts)[::-1][:k]
+    predictions: list[SceneAttributePrediction] = []
+    for rank, idx in enumerate(sorted_idx):
+        rgb = unique[idx]
+        confidence = float(counts[idx] / total)
+        hex_color = "#%02x%02x%02x" % tuple(int(c) for c in rgb.tolist())
+        predictions.append(
+            SceneAttributePrediction(
+                attribute="dominant_color",
+                value=f"{hex_color}:{rank}",
+                confidence=round(confidence, 4),
+            )
+        )
+    return predictions
+
+
+def predict_scene_attributes(
+    image: Image.Image, service_url: str | None = None
+) -> list[SceneAttributePrediction]:
+    """Run production scene classifiers or fall back to lightweight heuristics."""
+    if service_url:
+        try:
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            buffer.seek(0)
+            response = requests.post(
+                service_url,
+                files={"file": ("frame.png", buffer.getvalue(), "image/png")},
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            predictions: list[SceneAttributePrediction] = []
+            for entry in payload.get("attributes", []):
+                try:
+                    predictions.append(
+                        SceneAttributePrediction(
+                            attribute=entry["attribute"],
+                            value=entry["value"],
+                            confidence=float(entry.get("confidence", 0.0)),
+                        )
+                    )
+                except Exception:
+                    continue
+            if predictions:
+                return predictions
+        except Exception:
+            logger.exception("Scene attribute service failed, using heuristics instead")
+
+    rgb = image.convert("RGB")
+    arr = np.asarray(rgb)
+    brightness = float(arr.mean() / 255)
+    saturation = float(np.std(arr) / 255)
+    height, width = arr.shape[:2]
+    aspect_ratio = width / max(1, height)
+
+    def _score(center: float, spread: float = 0.25) -> float:
+        return max(0.05, 1.0 - abs(brightness - center) / spread)
+
+    time_of_day = "night" if brightness < 0.42 else "day"
+    lighting = "low_key" if brightness < 0.35 else "high_key"
+    environment = "interior" if saturation < 0.18 else "exterior"
+    if brightness < 0.3 and saturation < 0.12:
+        environment = "underwater"
+    if aspect_ratio > 2.1:
+        composition_tag = "panoramic"
+    elif aspect_ratio < 0.8:
+        composition_tag = "portrait_frame"
+    else:
+        composition_tag = "balanced_frame"
+
+    cool_strength = float(np.mean(arr[:, :, 2]) / 255)
+    warm_strength = float(np.mean(arr[:, :, 0]) / 255)
+    emotion = "calm" if cool_strength >= warm_strength else "intense"
+    location_type = "urban" if saturation > 0.25 else "natural"
+    if environment == "interior":
+        location_type = "interior"
+    composition_secondary = "rule_of_thirds" if saturation > 0.1 else "centered"
+
+    predictions: list[SceneAttributePrediction] = [
+        SceneAttributePrediction("time_of_day", time_of_day, round(_score(0.55), 3)),
+        SceneAttributePrediction("lighting", lighting, round(_score(0.5), 3)),
+        SceneAttributePrediction(
+            "environment", environment, round(0.6 + 0.4 * saturation, 3)
+        ),
+        SceneAttributePrediction(
+            "location_type", location_type, round(0.55 + 0.35 * saturation, 3)
+        ),
+        SceneAttributePrediction("composition", composition_tag, 0.62),
+        SceneAttributePrediction("composition", composition_secondary, 0.58),
+        SceneAttributePrediction("emotion", emotion, round(0.5 + 0.4 * brightness, 3)),
+    ]
+    predictions.extend(_dominant_colors(image, k=3))
+    return predictions
