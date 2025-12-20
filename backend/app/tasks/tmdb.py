@@ -11,9 +11,14 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="tmdb.ingest_movie")
-def ingest_movie_from_tmdb(tmdb_id: int) -> dict[str, int]:
-    """Fetch TMDb metadata and persist movies, cast, and artwork."""
-    ingestor = TMDBIngestor()
+def ingest_movie_from_tmdb(tmdb_id: int, provider_hint: str | None = None) -> dict[str, int | str]:
+    """Fetch metadata from TMDb/OMDb and persist movies, cast, and artwork."""
+    ingestor = TMDBIngestor(provider_hint=provider_hint)
     result = ingestor.ingest_movie(tmdb_id)
-    logger.info("TMDb ingest completed for %s -> %s", tmdb_id, result.get("movie_id"))
+    logger.info(
+        "Metadata ingest completed for %s via %s -> %s",
+        tmdb_id,
+        result.get("provider"),
+        result.get("movie_id"),
+    )
     return result

@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 import logging
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 from sqlalchemy.orm import Session
 
-from app.core.settings import get_settings
+from app.core.settings import Settings, get_settings
 from app.db import SessionLocal
 from app.models import Artwork, CastMember, Movie, MovieCast
 
@@ -54,6 +54,112 @@ class TMDBClient:
         response = self._client.get(f"/movie/{tmdb_id}", params=params)
         response.raise_for_status()
         return response.json()
+
+
+class MovieMetadataProvider(Protocol):
+    """Interface for pluggable movie metadata providers."""
+
+    name: str
+
+    def fetch_movie(
+        self, tmdb_id: int, *, append_to_response: list[str] | None = None
+    ) -> dict[str, Any]:
+        ...
+
+
+class TMDBProvider:
+    """Provider that delegates to TMDb APIs."""
+
+    name = "tmdb"
+
+    def __init__(self, client: TMDBClient | None = None) -> None:
+        self._client = client or TMDBClient()
+
+    def fetch_movie(
+        self, tmdb_id: int, *, append_to_response: list[str] | None = None
+    ) -> dict[str, Any]:
+        return self._client.movie_details(tmdb_id, append_to_response=append_to_response)
+
+
+class OMDBProvider:
+    """Provider that proxies requests to the OMDb API."""
+
+    name = "omdb"
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        client: httpx.Client | None = None,
+    ) -> None:
+        headers = {"Accept": "application/json"}
+        self._client = client or httpx.Client(base_url=base_url, headers=headers, timeout=10.0)
+        self._api_key = api_key
+
+    def fetch_movie(
+        self, tmdb_id: int, *, append_to_response: list[str] | None = None  # noqa: ARG002 - interface parity
+    ) -> dict[str, Any]:
+        response = self._client.get("", params={"apikey": self._api_key, "i": f"tt{tmdb_id}"})
+        response.raise_for_status()
+        payload = response.json()
+
+        if str(payload.get("Response")).lower() == "false":
+            raise ValueError(payload.get("Error") or "OMDb query failed")
+
+        actors = [
+            actor.strip() for actor in (payload.get("Actors") or "").split(",") if actor.strip()
+        ]
+        release_year = (payload.get("Year") or "").split("–")[0].strip()
+
+        return {
+            "id": tmdb_id,
+            "title": payload.get("Title"),
+            "original_title": payload.get("Title"),
+            "overview": payload.get("Plot"),
+            "release_date": f"{release_year}-01-01" if release_year else None,
+            "credits": {
+                "cast": [
+                    {
+                        "id": abs(hash((tmdb_id, actor, index))) % 2_147_483_647,
+                        "name": actor,
+                        "character": None,
+                        "order": index,
+                    }
+                    for index, actor in enumerate(actors)
+                ]
+            },
+            # OMDb does not expose still artwork URLs in the free tier; keep structure consistent
+            "images": {"posters": [], "backdrops": []},
+        }
+
+
+def _select_provider(
+    settings: Settings | None = None,
+    *,
+    provider_hint: str | None = None,
+    client: httpx.Client | None = None,
+) -> MovieMetadataProvider:
+    resolved_settings = settings or get_settings()
+    hint = (provider_hint or "").lower()
+
+    if hint == "omdb" and resolved_settings.omdb_api_key:
+        return OMDBProvider(
+            resolved_settings.omdb_api_key,
+            resolved_settings.omdb_base_url,
+            client=client,
+        )
+
+    if resolved_settings.tmdb_api_key or hint == "tmdb":
+        return TMDBProvider(TMDBClient(client))
+
+    if resolved_settings.omdb_api_key:
+        return OMDBProvider(
+            resolved_settings.omdb_api_key,
+            resolved_settings.omdb_base_url,
+            client=client,
+        )
+
+    return TMDBProvider(TMDBClient(client))
 
 
 SessionFactory = Callable[[], Session]
@@ -103,15 +209,15 @@ class TMDBIngestor:
     def __init__(
         self,
         client: TMDBClient | None = None,
+        provider: MovieMetadataProvider | None = None,
+        provider_hint: str | None = None,
         session_factory: SessionFactory | None = None,
     ) -> None:
-        self._client = client or TMDBClient()
+        self._provider = provider or _select_provider(provider_hint=provider_hint, client=client)
         self._session_factory = session_factory or SessionLocal
 
     def ingest_movie(self, tmdb_id: int) -> dict[str, Any]:
-        payload = self._client.movie_details(
-            tmdb_id, append_to_response=["credits", "images"]
-        )
+        payload = self._provider.fetch_movie(tmdb_id, append_to_response=["credits", "images"])
 
         with _session_scope(self._session_factory) as session:
             movie = self._upsert_movie(session, payload)
@@ -121,7 +227,8 @@ class TMDBIngestor:
             )
 
             logger.info(
-                "TMDb import for %s: movie_id=%s cast=%s artwork=%s",
+                "Metadata import (%s) for %s: movie_id=%s cast=%s artwork=%s",
+                self._provider.name,
                 tmdb_id,
                 movie.id,
                 cast_count,
@@ -131,6 +238,7 @@ class TMDBIngestor:
             return {
                 "movie_id": movie.id,
                 "tmdb_id": movie.tmdb_id,
+                "provider": self._provider.name,
                 "cast_count": cast_count,
                 "artwork_count": artwork_count,
             }
