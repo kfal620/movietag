@@ -22,6 +22,8 @@ def _serialize_movie(movie: Movie) -> dict[str, Any]:
         "title": movie.title,
         "description": movie.description,
         "release_year": movie.release_year,
+        "created_at": movie.created_at,
+        "updated_at": movie.updated_at,
         "cast": [
             {
                 "id": mapping.cast_member.id,

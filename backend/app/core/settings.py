@@ -49,6 +49,14 @@ class Settings(BaseSettings):
         default="https://api.themoviedb.org/3",
         validation_alias=AliasChoices("APP_TMDB_BASE_URL", "TMDB_BASE_URL"),
     )
+    omdb_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("APP_OMDB_API_KEY", "OMDB_API_KEY"),
+    )
+    omdb_base_url: str = Field(
+        default="https://www.omdbapi.com",
+        validation_alias=AliasChoices("APP_OMDB_BASE_URL", "OMDB_BASE_URL"),
+    )
     storage_endpoint_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_ENDPOINT_URL", "STORAGE_ENDPOINT_URL"),

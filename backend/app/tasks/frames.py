@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
 from app.db import SessionLocal
+from app.integrations.tmdb import TMDBIngestor
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
 from app.services.film_matcher import FilmMatcher
 from app.services.storage import download_to_path
@@ -576,12 +577,89 @@ def _match_frame(
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
         match = _match_frame_with_known_movies(session, frame)
+    return {
+        "status": "matched" if match else "unmatched",
+        "predicted_movie_id": frame.predicted_movie_id,
+        "match_confidence": frame.match_confidence,
+        "predicted_timestamp": frame.predicted_timestamp,
+        "predicted_shot_id": frame.predicted_shot_id,
+    }
+
+
+def _maybe_enqueue_enrichment(
+    frame_id: int,
+    predicted_movie_id: int | None,
+    predicted_timestamp: str | None = None,
+    session_factory: SessionFactory | None = None,
+) -> None:
+    if predicted_movie_id is None:
+        return
+
+    with _session_scope(session_factory) as session:
+        movie = session.get(Movie, predicted_movie_id)
+        if movie is None or movie.tmdb_id is None:
+            return
+        enrich_frame_metadata.delay(
+            frame_id,
+            movie.tmdb_id,
+            shot_timestamp=predicted_timestamp,
+        )
+
+
+@shared_task(name="frames.enrich_metadata")
+def enrich_frame_metadata(
+    frame_id: int,
+    tmdb_id: int,
+    provider_hint: str | None = None,
+    shot_timestamp: str | None = None,
+    scene_summary: str | None = None,
+    session_factory: SessionFactory | None = None,
+) -> dict[str, Any]:
+    """Enrich a frame with upstream metadata and persist the provider used."""
+
+    ingestor = TMDBIngestor(provider_hint=provider_hint)
+    ingest_result = ingestor.ingest_movie(tmdb_id)
+
+    with _session_scope(session_factory) as session:
+        frame = session.get(Frame, frame_id)
+        if frame is None:
+            raise ValueError(f"Frame with id {frame_id} does not exist")
+
+        movie = (
+            session.get(Movie, ingest_result.get("movie_id"))
+            if ingest_result.get("movie_id") is not None
+            else None
+        )
+        if movie is not None:
+            if frame.movie_id is None:
+                frame.movie_id = movie.id
+            if frame.predicted_movie_id is None:
+                frame.predicted_movie_id = movie.id
+            if scene_summary is None and movie.description:
+                scene_summary = movie.description
+
+        frame.shot_timestamp = shot_timestamp or frame.shot_timestamp or frame.predicted_timestamp
+        if scene_summary is not None:
+            frame.scene_summary = scene_summary
+        frame.metadata_source = ingest_result.get("provider") or provider_hint or frame.metadata_source
+        frame.failure_reason = None
+        frame.status = "enriched"
+        session.add(frame)
+
+        logger.info(
+            "Frame %s enriched via %s (movie_id=%s)",
+            frame.id,
+            frame.metadata_source,
+            frame.movie_id,
+        )
+
         return {
-            "status": "matched" if match else "unmatched",
-            "predicted_movie_id": frame.predicted_movie_id,
-            "match_confidence": frame.match_confidence,
-            "predicted_timestamp": frame.predicted_timestamp,
-            "predicted_shot_id": frame.predicted_shot_id,
+            "status": "enriched",
+            "frame_id": frame.id,
+            "movie_id": frame.movie_id,
+            "metadata_source": frame.metadata_source,
+            "shot_timestamp": frame.shot_timestamp,
+            "scene_summary": frame.scene_summary,
         }
 
 
@@ -616,10 +694,16 @@ def ingest_and_tag_frame(
         embed_result = embed_frame(frame_id)
         if movie_id is None:
             match_result = _match_frame(frame_id)
+            _maybe_enqueue_enrichment(
+                frame_id,
+                match_result.get("predicted_movie_id"),
+                match_result.get("predicted_timestamp"),
+            )
         else:
             tag_result = tag_frame(frame_id)
             scene_result = detect_scene_attributes(frame_id)
             actor_result = detect_actor_faces(frame_id)
+            _maybe_enqueue_enrichment(frame_id, movie_id)
     except Exception as exc:  # pragma: no cover - defensive path
         logger.exception("Pipeline failed for frame %s", frame_id)
         _mark_failure(frame_id, str(exc))
