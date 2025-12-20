@@ -137,29 +137,37 @@ def _select_provider(
     settings: Settings | None = None,
     *,
     provider_hint: str | None = None,
-    client: httpx.Client | None = None,
+    client: TMDBClient | httpx.Client | None = None,
 ) -> MovieMetadataProvider:
     resolved_settings = settings or get_settings()
     hint = (provider_hint or "").lower()
+    tmdb_client = client if isinstance(client, TMDBClient) else TMDBClient(client)
+    omdb_client: httpx.Client | None
+    if isinstance(client, httpx.Client):
+        omdb_client = client
+    elif isinstance(client, TMDBClient):
+        omdb_client = client._client
+    else:
+        omdb_client = None
 
     if hint == "omdb" and resolved_settings.omdb_api_key:
         return OMDBProvider(
             resolved_settings.omdb_api_key,
             resolved_settings.omdb_base_url,
-            client=client,
+            client=omdb_client,
         )
 
     if resolved_settings.tmdb_api_key or hint == "tmdb":
-        return TMDBProvider(TMDBClient(client))
+        return TMDBProvider(tmdb_client)
 
     if resolved_settings.omdb_api_key:
         return OMDBProvider(
             resolved_settings.omdb_api_key,
             resolved_settings.omdb_base_url,
-            client=client,
+            client=omdb_client,
         )
 
-    return TMDBProvider(TMDBClient(client))
+    return TMDBProvider(tmdb_client)
 
 
 SessionFactory = Callable[[], Session]
