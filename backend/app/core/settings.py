@@ -104,6 +104,18 @@ class Settings(BaseSettings):
         description="Optional local ONNX/weights path for scene/vision models.",
         validation_alias=AliasChoices("APP_VISION_MODEL_PATH", "VISION_MODEL_PATH"),
     )
+    vision_service_url: str | None = Field(
+        default=None,
+        description="HTTP endpoint for production scene understanding models.",
+        validation_alias=AliasChoices("APP_VISION_SERVICE_URL", "VISION_SERVICE_URL"),
+    )
+    face_recognition_match_threshold: float = Field(
+        default=0.55,
+        description="Cosine similarity threshold for face recognition.",
+        validation_alias=AliasChoices(
+            "APP_FACE_RECOGNITION_MATCH_THRESHOLD", "FACE_RECOGNITION_MATCH_THRESHOLD"
+        ),
+    )
     admin_token: str = Field(
         default="admin-token",
         validation_alias=AliasChoices("APP_ADMIN_TOKEN", "ADMIN_TOKEN"),

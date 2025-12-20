@@ -7,6 +7,7 @@ import logging
 import re
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import time
@@ -23,7 +24,14 @@ from app.integrations.tmdb import TMDBIngestor
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
 from app.services.film_matcher import FilmMatcher
 from app.services.storage import download_to_path
-from app.services.vision import detect_faces, encode_image_with_clip
+from app.services.vision import (
+    SceneAttributePrediction,
+    cosine_similarity,
+    detect_faces,
+    encode_face_image,
+    encode_image_with_clip,
+    predict_scene_attributes,
+)
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -157,24 +165,31 @@ def _match_frame_with_known_movies(
 
 
 def _persist_scene_attributes(
-    session: Session, frame: Frame, embedding: list[float], *, min_confidence: float = 0.35
+    session: Session,
+    frame: Frame,
+    predictions: list[SceneAttributePrediction],
+    *,
+    min_confidence: float = 0.2,
 ) -> list[dict[str, Any]]:
-    time_of_day_score = embedding[0] if embedding else 0.5
-    attribute_rows = [
-        ("time_of_day", "night" if time_of_day_score < 0.45 else "day", 1 - abs(0.5 - time_of_day_score)),
-        ("lighting", "low_key" if time_of_day_score < 0.4 else "high_key", 0.8),
-    ]
     applied: list[dict[str, Any]] = []
-    for attribute, value, confidence in attribute_rows:
-        value_to_store = value if confidence >= min_confidence else "unknown"
+    for prediction in predictions:
+        if prediction.confidence is None:
+            continue
+        value_to_store = prediction.value if prediction.confidence >= min_confidence else "unknown"
         record = SceneAttribute(
             frame_id=frame.id,
-            attribute=attribute,
+            attribute=prediction.attribute,
             value=value_to_store,
-            confidence=round(float(confidence), 3),
+            confidence=round(float(prediction.confidence), 3),
         )
         session.add(record)
-        applied.append({"attribute": attribute, "value": value_to_store, "confidence": record.confidence})
+        applied.append(
+            {
+                "attribute": prediction.attribute,
+                "value": value_to_store,
+                "confidence": record.confidence,
+            }
+        )
     return applied
 
 
@@ -192,18 +207,95 @@ def _persist_actor_detections(session: Session, frame: Frame) -> list[dict[str, 
     detections: list[dict[str, Any]] = []
     for index, (cast_member_id, name) in enumerate(movie_cast):
         confidence = round(0.7 - 0.05 * index, 3)
+        embedding = _hash_embedding(f"{frame.id}-{index}".encode(), 64)
         record = ActorDetection(
             frame_id=frame.id,
             cast_member_id=cast_member_id,
             face_index=index,
             confidence=confidence,
             bbox=f"{0.1 * index},{0.1 * index},0.3,0.3",
+            embedding=json.dumps(embedding),
         )
         session.add(record)
         detections.append(
             {"cast_member_id": cast_member_id, "name": name, "confidence": confidence}
         )
     return detections
+
+
+def _load_headshot_image(profile_path: str) -> Image.Image | None:
+    if not profile_path:
+        return None
+    path = Path(profile_path)
+    try:
+        if path.exists():
+            return _load_image(path)
+        if profile_path.startswith("http"):
+            import requests
+
+            response = requests.get(profile_path, timeout=20)
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content)).convert("RGB")
+    except Exception:
+        logger.debug("Failed to load headshot %s", profile_path, exc_info=True)
+    return None
+
+
+def _reference_embeddings_for_cast(
+    session: Session, frame: Frame, settings: Any
+) -> dict[int, list[float]]:
+    from app.models import MovieCast, CastMember  # local import to avoid cycles
+
+    cast_records: list[CastMember] = (
+        session.query(CastMember)
+        .join(MovieCast, MovieCast.cast_member_id == CastMember.id)
+        .filter(MovieCast.movie_id == frame.movie_id)
+        .order_by(MovieCast.cast_order)
+        .all()
+    )
+    embeddings: dict[int, list[float]] = {}
+    for cast_member in cast_records:
+        if cast_member.face_embedding:
+            try:
+                embeddings[cast_member.id] = json.loads(cast_member.face_embedding)
+                continue
+            except Exception:
+                logger.debug("Invalid face embedding for cast member %s", cast_member.id)
+
+        headshot = _load_headshot_image(cast_member.profile_path or "")
+        if headshot is not None:
+            try:
+                embedding = encode_face_image(headshot)
+                cast_member.face_embedding = json.dumps(embedding)
+                cast_member.face_embedding_model = "facenet_vggface2"
+                session.add(cast_member)
+                embeddings[cast_member.id] = embedding
+                continue
+            except Exception:
+                logger.debug("Failed to encode headshot for cast member %s", cast_member.id)
+
+        embeddings[cast_member.id] = _hash_embedding(str(cast_member.id).encode(), 64)
+    return embeddings
+
+
+def _best_match_for_face(
+    face_embedding: list[float],
+    cast_embeddings: dict[int, list[float]],
+    threshold: float,
+) -> tuple[int | None, float]:
+    best_id: int | None = None
+    best_score = 0.0
+    for cast_id, reference in cast_embeddings.items():
+        try:
+            score = cosine_similarity(face_embedding, reference)
+        except Exception:
+            score = 0.0
+        if score > best_score:
+            best_score = score
+            best_id = cast_id
+    if best_score < threshold:
+        return None, best_score
+    return best_id, best_score
 
 
 def _ensure_local_copy(file_path: str, storage_uri: str | None) -> Path:
@@ -473,23 +565,56 @@ def tag_frame(
 def detect_scene_attributes(
     frame_id: int, session_factory: SessionFactory | None = None
 ) -> dict[str, Any]:
-    with _session_scope(session_factory) as session:
-        frame = session.get(Frame, frame_id)
-        if frame is None:
-            raise ValueError(f"Frame with id {frame_id} does not exist")
+    settings = get_settings()
+    cleanup = False
+    path: Path | None = None
+    try:
+        with _session_scope(session_factory) as session:
+            frame = session.get(Frame, frame_id)
+            if frame is None:
+                raise ValueError(f"Frame with id {frame_id} does not exist")
 
-        # Idempotency: clear prior predictions
-        session.query(SceneAttribute).filter(SceneAttribute.frame_id == frame.id).delete()
+            # Idempotency: clear prior predictions
+            session.query(SceneAttribute).filter(SceneAttribute.frame_id == frame.id).delete()
 
-        embedding = json.loads(frame.embedding) if frame.embedding else []
-        applied = _persist_scene_attributes(session, frame, embedding)
+            try:
+                path, cleanup = _materialize_frame(frame)
+            except FileNotFoundError as exc:
+                _mark_failure(frame.id, str(exc), session_factory=session_factory)
+                raise
 
-        frame.failure_reason = None
-        frame.status = "scene_annotated"
-        session.add(frame)
+            image = _load_image(path)
 
-        logger.info("Scene attributes stored for frame %s", frame.id)
-        return {"status": "scene_attributes", "frame_id": frame.id, "attributes": applied}
+            try:
+                predictions = predict_scene_attributes(image, service_url=settings.vision_service_url)
+            except Exception:
+                logger.exception("Scene attribute prediction failed for frame %s", frame.id)
+                predictions = []
+
+            if not predictions:
+                embedding = json.loads(frame.embedding) if frame.embedding else []
+                predictions = [
+                    SceneAttributePrediction(
+                        attribute="time_of_day",
+                        value="night" if (embedding[0] if embedding else 0.5) < 0.45 else "day",
+                        confidence=0.5,
+                    )
+                ]
+
+            applied = _persist_scene_attributes(session, frame, predictions)
+
+            frame.failure_reason = None
+            frame.status = "scene_annotated"
+            session.add(frame)
+
+            logger.info("Scene attributes stored for frame %s", frame.id)
+            return {"status": "scene_attributes", "frame_id": frame.id, "attributes": applied}
+    finally:
+        if cleanup and path and path.exists():
+            try:
+                path.unlink()
+            except Exception:
+                logger.warning("Could not cleanup scene attribute temp file for frame %s", frame_id)
 
 
 @shared_task(name="frames.actor_detections")
@@ -515,38 +640,32 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
                 logger.exception("Falling back to legacy actor detection for frame %s", frame.id)
                 detected_faces = []
 
-            from app.models import MovieCast, CastMember  # local import to avoid cycles
-
-            cast_member_ids = [
-                cast_member_id
-                for (cast_member_id,) in (
-                    session.query(CastMember.id)
-                        .join(MovieCast, MovieCast.cast_member_id == CastMember.id)
-                        .filter(MovieCast.movie_id == frame.movie_id)
-                        .order_by(MovieCast.cast_order)
-                        .all()
-                )
-            ]
+            cast_embeddings = _reference_embeddings_for_cast(session, frame, settings)
 
             persisted: list[dict[str, Any]] = []
             for index, face in enumerate(detected_faces):
-                cast_member_id = cast_member_ids[index] if index < len(cast_member_ids) else None
-                bbox = ",".join(f"{value:.2f}" for value in face.bbox) if face.bbox else None
+                bbox = ",".join(f"{value:.4f}" for value in face.bbox) if face.bbox else None
+                matched_cast_id, similarity = _best_match_for_face(
+                    face.embedding, cast_embeddings, settings.face_recognition_match_threshold
+                )
                 if face.confidence < settings.face_min_confidence:
-                    cast_member_id = None
+                    matched_cast_id = None
+                combined_confidence = round(min(1.0, face.confidence * max(similarity, 0.5)), 3)
                 detection = ActorDetection(
                     frame_id=frame.id,
-                    cast_member_id=cast_member_id,
+                    cast_member_id=matched_cast_id,
                     face_index=index,
-                    confidence=round(face.confidence, 3),
+                    confidence=combined_confidence,
                     bbox=bbox,
+                    embedding=json.dumps(face.embedding),
                 )
                 session.add(detection)
                 persisted.append(
                     {
-                        "cast_member_id": cast_member_id,
-                        "confidence": detection.confidence,
+                        "cast_member_id": matched_cast_id,
+                        "confidence": combined_confidence,
                         "bbox": face.bbox,
+                        "similarity": similarity,
                     }
                 )
 

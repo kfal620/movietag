@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import json
 import logging
 from io import BytesIO
 from celery import chain
@@ -83,8 +84,9 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
                 "id": detection.id,
                 "cast_member_id": detection.cast_member_id,
                 "confidence": detection.confidence,
-                "bbox": detection.bbox,
+                "bbox": [float(value) for value in detection.bbox.split(",")] if detection.bbox else None,
                 "face_index": detection.face_index,
+                "embedding": json.loads(detection.embedding) if detection.embedding else None,
             }
             for detection in frame.actor_detections
         ],
