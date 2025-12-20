@@ -5,18 +5,48 @@ export type Prediction = {
   year?: number;
 };
 
+export type Tag = {
+  id?: number;
+  name: string;
+  confidence?: number;
+};
+
+export type SceneAttribute = {
+  id?: number;
+  attribute: string;
+  value: string;
+  confidence?: number;
+};
+
+export type ActorDetection = {
+  id?: number;
+  castMemberId: number | null;
+  castMemberName?: string | null;
+  confidence?: number;
+  faceIndex?: number | null;
+  bbox?: number[] | null;
+};
+
 export type Frame = {
   id: number;
-  movieId: number;
+  movieId: number | null;
   movieTitle: string;
+  predictedMovieId?: number | null;
+  predictedMovieTitle?: string | null;
   imageUrl: string;
   ingestSource?: string;
+  metadataSource?: string | null;
   predictions: Prediction[];
   approvedPrediction?: Prediction;
   overrideTitle?: string;
   status: "pending" | "new" | "needs_review" | "confirmed" | "overridden" | "tagged" | "embedded" | "scene_annotated" | "actors_detected";
+  matchConfidence?: number | null;
+  predictedTimestamp?: string | null;
+  predictedShotId?: string | null;
+  shotTimestamp?: string | null;
+  sceneSummary?: string | null;
   notes?: string;
-  tags?: string[];
-  sceneAttributes?: { attribute: string; value: string; confidence?: number }[];
-  actors?: { castMemberId: number | null; confidence?: number }[];
+  tags?: Tag[];
+  sceneAttributes?: SceneAttribute[];
+  actors?: ActorDetection[];
 };

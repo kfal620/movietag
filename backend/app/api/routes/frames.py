@@ -4,12 +4,13 @@ from typing import Any
 import json
 import logging
 from io import BytesIO
-from celery import chain
 
+from celery import chain
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from urllib.parse import urlparse
 from tempfile import NamedTemporaryFile
+from urllib.parse import urlparse
 import uuid
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
@@ -48,7 +49,9 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
     return {
         "id": frame.id,
         "movie_id": frame.movie_id,
+        "movie_title": frame.movie.title if frame.movie else None,
         "predicted_movie_id": frame.predicted_movie_id,
+        "predicted_movie_title": frame.predicted_movie.title if frame.predicted_movie else None,
         "match_confidence": frame.match_confidence,
         "predicted_timestamp": frame.predicted_timestamp,
         "predicted_shot_id": frame.predicted_shot_id,
@@ -83,6 +86,9 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
             {
                 "id": detection.id,
                 "cast_member_id": detection.cast_member_id,
+                "cast_member_name": detection.cast_member.name
+                if detection.cast_member
+                else None,
                 "confidence": detection.confidence,
                 "bbox": [float(value) for value in detection.bbox.split(",")] if detection.bbox else None,
                 "face_index": detection.face_index,
@@ -148,7 +154,9 @@ def list_frames(
         .options(
             joinedload(Frame.tags).joinedload(FrameTag.tag),
             joinedload(Frame.scene_attributes),
-            joinedload(Frame.actor_detections),
+            joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
+            joinedload(Frame.movie),
+            joinedload(Frame.predicted_movie),
         )
         .outerjoin(Movie, Frame.movie_id == Movie.id)
     )
@@ -173,10 +181,12 @@ def get_frame(frame_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     frame = (
         db.query(Frame)
         .options(
-            joinedload(Frame.tags).joinedload(FrameTag.tag),
-            joinedload(Frame.scene_attributes),
-            joinedload(Frame.actor_detections),
-        )
+        joinedload(Frame.tags).joinedload(FrameTag.tag),
+        joinedload(Frame.scene_attributes),
+        joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
+        joinedload(Frame.movie),
+        joinedload(Frame.predicted_movie),
+    )
         .filter(Frame.id == frame_id)
         .one_or_none()
     )
@@ -217,6 +227,91 @@ def replace_frame_tags(
             db.delete(frame_tag)
 
     frame.status = "confirmed"
+    db.add(frame)
+    db.commit()
+    db.refresh(frame)
+    return _serialize_frame(frame)
+
+
+class SceneAttributePayload(BaseModel):
+    attribute: str
+    value: str
+    confidence: float | None = None
+
+
+class SceneAttributeUpdateRequest(BaseModel):
+    attributes: list[SceneAttributePayload]
+
+
+@router.post("/{frame_id}/scene-attributes")
+def replace_scene_attributes(
+    frame_id: int,
+    payload: SceneAttributeUpdateRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    for existing in list(frame.scene_attributes):
+        db.delete(existing)
+
+    for attr in payload.attributes:
+        db.add(
+            SceneAttribute(
+                frame_id=frame.id,
+                attribute=attr.attribute,
+                value=attr.value,
+                confidence=attr.confidence,
+            )
+        )
+
+    frame.status = "scene_annotated"
+    db.add(frame)
+    db.commit()
+    db.refresh(frame)
+    return _serialize_frame(frame)
+
+
+class ActorDetectionPayload(BaseModel):
+    cast_member_id: int | None = None
+    confidence: float | None = None
+    face_index: int | None = None
+    bbox: list[float] | None = None
+
+
+class ActorDetectionsUpdateRequest(BaseModel):
+    actors: list[ActorDetectionPayload]
+
+
+@router.post("/{frame_id}/actors")
+def replace_actor_detections(
+    frame_id: int,
+    payload: ActorDetectionsUpdateRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    for detection in list(frame.actor_detections):
+        db.delete(detection)
+
+    for detection in payload.actors:
+        bbox = ",".join(str(value) for value in detection.bbox) if detection.bbox else None
+        db.add(
+            ActorDetection(
+                frame_id=frame.id,
+                cast_member_id=detection.cast_member_id,
+                confidence=detection.confidence,
+                face_index=detection.face_index,
+                bbox=bbox,
+            )
+        )
+
+    frame.status = "actors_detected"
     db.add(frame)
     db.commit()
     db.refresh(frame)
@@ -293,11 +388,11 @@ def enqueue_ingest(
 ) -> dict[str, str | int]:
     _validate_location(payload.file_path, payload.signed_url)
     async_result = ingest_and_tag_frame.delay(
-        file_path=payload.file_path,
-        movie_id=payload.movie_id,
-        storage_uri=payload.storage_uri,
-        signed_url=payload.signed_url,
-        captured_at=payload.captured_at,
+    file_path=payload.file_path,
+    movie_id=payload.movie_id,
+    storage_uri=payload.storage_uri,
+    signed_url=payload.signed_url,
+    captured_at=payload.captured_at,
     )
     return {"task_id": async_result.id, "status": "queued"}
 
@@ -351,3 +446,102 @@ def get_task_status(task_id: str) -> dict[str, Any]:
     elif result.failed():
         response["error"] = str(result.result)
     return response
+
+
+class FrameExportRequest(BaseModel):
+    frame_ids: list[int]
+    format: str = "csv"
+
+
+@router.post("/export")
+def export_frames(
+    payload: FrameExportRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> StreamingResponse:
+    if not payload.frame_ids:
+        raise HTTPException(status_code=400, detail="frame_ids is required")
+
+    frames = (
+        db.query(Frame)
+        .options(
+            joinedload(Frame.tags).joinedload(FrameTag.tag),
+            joinedload(Frame.scene_attributes),
+            joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
+            joinedload(Frame.movie),
+            joinedload(Frame.predicted_movie),
+        )
+        .filter(Frame.id.in_(payload.frame_ids))
+        .all()
+    )
+
+    serialized = [_serialize_frame(frame) for frame in frames]
+
+    if payload.format == "json":
+        content = json.dumps(serialized, default=str).encode("utf-8")
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=frames.json"},
+        )
+
+    fieldnames = [
+        "id",
+        "movie_id",
+        "movie_title",
+        "predicted_movie_id",
+        "predicted_movie_title",
+        "match_confidence",
+        "status",
+        "file_path",
+        "signed_url",
+        "predicted_timestamp",
+        "predicted_shot_id",
+        "shot_timestamp",
+        "scene_summary",
+        "metadata_source",
+        "captured_at",
+        "tags",
+        "scene_attributes",
+        "actor_detections",
+    ]
+    rows: list[dict[str, Any]] = []
+    for frame in serialized:
+        rows.append(
+            {
+                "id": frame["id"],
+                "movie_id": frame["movie_id"],
+                "movie_title": frame["movie_title"],
+                "predicted_movie_id": frame["predicted_movie_id"],
+                "predicted_movie_title": frame["predicted_movie_title"],
+                "match_confidence": frame.get("match_confidence"),
+                "status": frame["status"],
+                "file_path": frame["file_path"],
+                "signed_url": frame.get("signed_url"),
+                "predicted_timestamp": frame.get("predicted_timestamp"),
+                "predicted_shot_id": frame.get("predicted_shot_id"),
+                "shot_timestamp": frame.get("shot_timestamp"),
+                "scene_summary": frame.get("scene_summary"),
+                "metadata_source": frame.get("metadata_source"),
+                "captured_at": frame.get("captured_at"),
+                "tags": ";".join(tag["name"] for tag in frame["tags"]),
+                "scene_attributes": json.dumps(frame["scene_attributes"]),
+                "actor_detections": json.dumps(frame["actor_detections"]),
+            }
+        )
+
+    import csv
+    from io import StringIO
+
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+
+    content = buffer.getvalue().encode("utf-8")
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=frames.csv"},
+    )
