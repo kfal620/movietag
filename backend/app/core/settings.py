@@ -1,13 +1,17 @@
-from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_FILE_PATH = BASE_DIR / ".env"
+
+
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, extra="ignore")
 
     name: str = Field(
         default="Framegrab Tagger API",
@@ -140,7 +144,6 @@ class Settings(BaseSettings):
     )
 
 
-@lru_cache
 def get_settings() -> Settings:
-    """Return cached settings instance to avoid repeated environment parsing."""
+    """Return application settings loaded from the environment or .env file."""
     return Settings()

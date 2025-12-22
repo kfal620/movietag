@@ -11,6 +11,7 @@ import { Toolbar } from "../components/Toolbar";
 import { SceneAttributesForm } from "../components/SceneAttributesForm";
 import { ActorDetectionsForm } from "../components/ActorDetectionsForm";
 import { ExportPanel } from "../components/ExportPanel";
+import { SettingsPanel } from "../components/SettingsPanel";
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
   { label: "All", value: "all" },
@@ -325,6 +326,7 @@ export default function Home() {
           <SceneAttributesForm frame={selectedFrame} onSave={saveSceneAttributes} />
           <ActorDetectionsForm frame={selectedFrame} onSave={saveActorDetections} />
           <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
+          <SettingsPanel />
         </aside>
       </div>
     </main>
