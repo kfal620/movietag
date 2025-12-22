@@ -142,14 +142,14 @@ def _match_frame_with_known_movies(
     embedding = json.loads(frame.embedding) if frame.embedding else []
 
     # Reset predictions before attempting a new match
-    frame.predicted_movie_id = None
+    # frame.movie_id = None # Do we want to reset strict movie_id? Yes if we are re-matching
     frame.match_confidence = None
     frame.predicted_timestamp = None
     frame.predicted_shot_id = None
 
     match = matcher.match_movie(embedding)
     if match:
-        frame.predicted_movie_id = match["movie_id"]
+        frame.movie_id = match["movie_id"]
         frame.match_confidence = match["confidence"]
         frame.predicted_timestamp = match.get("timestamp")
         frame.predicted_shot_id = match.get("shot_id")
@@ -305,7 +305,7 @@ def _cluster_unknown_faces(
     detections: list[ActorDetection],
     unknown_threshold: float,
 ) -> dict[int, tuple[str, str]]:
-    movie_id = frame.movie_id or frame.predicted_movie_id
+    movie_id = frame.movie_id
     if movie_id is None:
         return {}
 

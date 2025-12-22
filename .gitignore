@@ -30,3 +30,6 @@ next-env.d.ts
 
 # MyPy cache
 .mypy_cache/
+backend/app/.DS_Store
+backend/app/.DS_Store
+backend/app/.DS_Store

@@ -4,16 +4,13 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { ActorDetection, Frame, Prediction, SceneAttribute } from "../lib/types";
-import { FrameDetailsPanel } from "../components/FrameDetailsPanel";
+import { FrameSidebar } from "../components/FrameSidebar";
 import { FrameGrid } from "../components/FrameGrid";
-import { OverrideForm } from "../components/OverrideForm";
 import { Toolbar } from "../components/Toolbar";
-import { SceneAttributesForm } from "../components/SceneAttributesForm";
-import { ActorDetectionsForm } from "../components/ActorDetectionsForm";
 import { ExportPanel } from "../components/ExportPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StorageExplorer } from "../components/StorageExplorer";
-import { FrameMetadataForm } from "../components/FrameMetadataForm";
+
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
   { label: "All", value: "all" },
@@ -31,8 +28,6 @@ type FrameApiItem = {
   status: Frame["status"];
   signed_url?: string | null;
   file_path: string;
-  predicted_movie_id?: number | null;
-  predicted_movie_title?: string | null;
   predicted_timestamp?: string | null;
   predicted_shot_id?: string | null;
   shot_timestamp?: string | null;
@@ -103,38 +98,27 @@ export default function Home() {
 
   const { data, mutate } = useSWR<FramesApiResponse>(
     [framesUrl, authToken],
-    ([url, token]) => authedFetcher(url, token),
+    ([url, token]: [string, string]) => authedFetcher(url, token),
     {
-    revalidateOnFocus: false,
+      revalidateOnFocus: false,
     },
   );
 
   const frames: Frame[] = useMemo(
     () =>
       data?.items.map((item) => {
-        const predictions: Prediction[] =
-          item.predicted_movie_id !== null && item.predicted_movie_id !== undefined
-            ? [
-                {
-                  source: item.metadata_source || "match-model",
-                  title: item.predicted_movie_title ?? `Movie #${item.predicted_movie_id}`,
-                  confidence: item.match_confidence ?? 0,
-                },
-              ]
-            : [];
+        const predictions: Prediction[] = [];
 
         return {
           id: item.id,
           movieId: item.movie_id,
           movieTitle:
-            item.movie_title || item.predicted_movie_title || (item.movie_id ? `Movie #${item.movie_id}` : "Unknown movie"),
+            item.movie_title || (item.movie_id ? `Movie #${item.movie_id}` : "Unknown movie"),
           filePath: item.file_path,
           storageUri: item.storage_uri,
           signedUrl: item.signed_url ?? undefined,
           capturedAt: item.captured_at ?? undefined,
-          predictedMovieId: item.predicted_movie_id,
-          predictedMovieTitle: item.predicted_movie_title,
-          imageUrl: item.signed_url || item.file_path,
+          capturedAt: item.captured_at ?? undefined,
           predictions,
           status: item.status,
           tags: item.tags?.map((tag) => ({ id: tag.id, name: tag.name, confidence: tag.confidence })) ?? [],
@@ -326,7 +310,6 @@ export default function Home() {
     }
     const payload = {
       movie_id: updates.movieId,
-      predicted_movie_id: updates.predictedMovieId,
       predicted_timestamp: updates.predictedTimestamp,
       predicted_shot_id: updates.predictedShotId,
       shot_timestamp: updates.shotTimestamp,
@@ -438,7 +421,6 @@ export default function Home() {
             authToken={authToken}
             onSelect={ensureFrameForStorageObject}
             message={storageMessage}
-            onMessage={setStorageMessage}
           />
           <section className="panel" aria-label="Frame grid">
             <FrameGrid
@@ -450,14 +432,17 @@ export default function Home() {
             />
           </section>
         </div>
-        <aside className="panel" aria-label="Frame details">
-          <FrameDetailsPanel frame={selectedFrame} />
-          <FrameMetadataForm frame={selectedFrame} onSave={saveFrameMetadata} />
-          <OverrideForm frame={selectedFrame} onApply={applyOverride} />
-          <SceneAttributesForm frame={selectedFrame} onSave={saveSceneAttributes} />
-          <ActorDetectionsForm frame={selectedFrame} onSave={saveActorDetections} />
-          <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
-          <SettingsPanel />
+        <aside className="panel" aria-label="Frame details" style={{ height: "100%", padding: 0 }}>
+          <FrameSidebar
+            frame={selectedFrame}
+            onSaveMetadata={saveFrameMetadata}
+            onApplyOverride={applyOverride}
+            onSaveScene={saveSceneAttributes}
+            onSaveActors={saveActorDetections}
+          >
+            <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
+            <SettingsPanel />
+          </FrameSidebar>
         </aside>
       </div>
     </main>

@@ -7,34 +7,13 @@ type Props = {
 };
 
 export function FrameDetailsPanel({ frame }: Props) {
-  if (!frame) {
-    return (
-      <div className="empty-state">
-        Choose a frame from the grid to inspect predictions and metadata.
-      </div>
-    );
-  }
+  if (!frame) return null;
 
   return (
-    <div className="sidebar">
+    <>
       <div className="sidebar__section">
-        <div style={{ position: "relative", width: "100%", height: 200, borderRadius: 12, overflow: "hidden" }}>
-          <Image src={frame.imageUrl} alt={frame.movieTitle} fill style={{ objectFit: "cover" }} />
-        </div>
-        <h3 className="sidebar__title" style={{ marginTop: "0.9rem" }}>
-          {frame.movieTitle}
-        </h3>
-        <p style={{ color: "var(--muted)", marginTop: "0.3rem" }}>Status: {frame.status.replace("_", " ")}</p>
-        {frame.metadataSource ? (
-          <p style={{ color: "var(--muted)", marginTop: "0.35rem" }}>
-            Metadata source <strong>{frame.metadataSource}</strong>
-          </p>
-        ) : null}
-        {frame.ingestSource ? (
-          <p style={{ color: "var(--muted)", marginTop: "0.35rem" }}>
-            Ingested from <strong>{frame.ingestSource}</strong>
-          </p>
-        ) : null}
+        {/* Header moved to FrameSidebar */}
+
         <div className="meta-grid" style={{ marginTop: "0.8rem" }}>
           <div className="meta-box">
             <label>Predicted match</label>
@@ -146,6 +125,6 @@ export function FrameDetailsPanel({ frame }: Props) {
           <p className="chip">Awaiting sync</p>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

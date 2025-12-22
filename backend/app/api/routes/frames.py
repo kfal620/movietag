@@ -57,8 +57,6 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
         "id": frame.id,
         "movie_id": frame.movie_id,
         "movie_title": frame.movie.title if frame.movie else None,
-        "predicted_movie_id": frame.predicted_movie_id,
-        "predicted_movie_title": frame.predicted_movie.title if frame.predicted_movie else None,
         "match_confidence": frame.match_confidence,
         "predicted_timestamp": frame.predicted_timestamp,
         "predicted_shot_id": frame.predicted_shot_id,
@@ -218,7 +216,6 @@ def lookup_frame(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
-            joinedload(Frame.predicted_movie),
         )
     )
 
@@ -262,7 +259,6 @@ def create_frame_from_storage(
 
 class FrameUpdateRequest(BaseModel):
     movie_id: int | None = None
-    predicted_movie_id: int | None = None
     predicted_timestamp: str | None = None
     predicted_shot_id: str | None = None
     shot_timestamp: str | None = None
@@ -324,7 +320,6 @@ def list_frames(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
-            joinedload(Frame.predicted_movie),
         )
         .outerjoin(Movie, Frame.movie_id == Movie.id)
     )
@@ -353,7 +348,6 @@ def get_frame(frame_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         joinedload(Frame.scene_attributes),
         joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
         joinedload(Frame.movie),
-        joinedload(Frame.predicted_movie),
     )
         .filter(Frame.id == frame_id)
         .one_or_none()
@@ -649,7 +643,6 @@ def export_frames(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
-            joinedload(Frame.predicted_movie),
         )
         .filter(Frame.id.in_(payload.frame_ids))
         .all()
@@ -669,8 +662,6 @@ def export_frames(
         "id",
         "movie_id",
         "movie_title",
-        "predicted_movie_id",
-        "predicted_movie_title",
         "match_confidence",
         "status",
         "file_path",
@@ -692,8 +683,6 @@ def export_frames(
                 "id": frame["id"],
                 "movie_id": frame["movie_id"],
                 "movie_title": frame["movie_title"],
-                "predicted_movie_id": frame["predicted_movie_id"],
-                "predicted_movie_title": frame["predicted_movie_title"],
                 "match_confidence": frame.get("match_confidence"),
                 "status": frame["status"],
                 "file_path": frame["file_path"],

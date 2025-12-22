@@ -135,12 +135,6 @@ class Frame(Base):
         nullable=True,
         index=True,
     )
-    predicted_movie_id = Column(
-        Integer,
-        ForeignKey("movies.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     match_confidence = Column(Float, nullable=True)
     predicted_timestamp = Column(String(100), nullable=True)
     predicted_shot_id = Column(String(100), nullable=True)
@@ -178,9 +172,7 @@ class Frame(Base):
     actor_detections = relationship(
         "ActorDetection", back_populates="frame", cascade="all, delete"
     )
-    predicted_movie = relationship(
-        "Movie", foreign_keys=[predicted_movie_id], viewonly=True
-    )
+
 
 
 class Tag(Base):
