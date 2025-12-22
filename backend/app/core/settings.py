@@ -65,6 +65,12 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_ENDPOINT_URL", "STORAGE_ENDPOINT_URL"),
     )
+    storage_public_endpoint_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "APP_STORAGE_PUBLIC_ENDPOINT_URL", "STORAGE_PUBLIC_ENDPOINT_URL"
+        ),
+    )
     storage_access_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_ACCESS_KEY", "STORAGE_ACCESS_KEY"),

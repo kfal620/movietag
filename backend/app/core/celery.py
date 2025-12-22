@@ -3,30 +3,21 @@
 from __future__ import annotations
 
 from celery import Celery
+from app.core.settings import get_settings
 
-from .settings import get_settings
+# Create the Celery app object FIRST, at module import time.
+# This guarantees it exists before any task modules import it.
+celery_app = Celery("movietag")
 
+# Configure it from settings
+settings = get_settings()
+celery_app.conf.broker_url = settings.celery_broker_url
+celery_app.conf.result_backend = settings.celery_result_backend
 
-def create_celery_app() -> Celery:
-    """Create and configure a Celery app from application settings."""
-    settings = get_settings()
-    celery_app = Celery(
-        "movietag",
-        broker=settings.celery_broker_url,
-        backend=settings.celery_result_backend,
-        include=["app.tasks.frames", "app.tasks.tmdb"],
-    )
+celery_app.conf.task_default_queue = settings.celery_default_queue
+celery_app.conf.task_queues = None  # rely on the default queue for now
+celery_app.conf.result_persistent = False
 
-    celery_app.conf.task_default_queue = settings.celery_default_queue
-    celery_app.conf.task_queues = None  # rely on the default queue for now
-    celery_app.conf.result_persistent = False
-
-    # ensure tasks are registered when running in-process
-    from app.tasks import frames as _frames  # noqa: F401
-    from app.tasks import tmdb as _tmdb  # noqa: F401
-
-    celery_app.autodiscover_tasks(["app.tasks"])
-    return celery_app
-
-
-celery_app = create_celery_app()
+# Discover tasks AFTER celery_app exists and is configured.
+# This will import app.tasks.* modules, but they can safely import celery_app now.
+celery_app.autodiscover_tasks(["app.tasks"])

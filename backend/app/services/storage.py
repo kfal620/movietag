@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from http import client
 import logging
 from typing import Tuple
 
@@ -11,7 +12,36 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.settings import get_settings
 
+from urllib.parse import urlparse, urlunparse
+
 logger = logging.getLogger(__name__)
+
+def _rewrite_to_public_endpoint(url: str, public_endpoint: str | None) -> str:
+    if not url or not public_endpoint:
+        return url
+
+    try:
+        signed = urlparse(url)
+        public = urlparse(public_endpoint)
+
+        # Only rewrite scheme+netloc; keep path/query/signature intact.
+        # If public_endpoint is missing scheme, do nothing.
+        if not public.scheme or not public.netloc:
+            return url
+
+        return urlunparse(
+            (
+                public.scheme,
+                public.netloc,
+                signed.path,
+                signed.params,
+                signed.query,
+                signed.fragment,
+            )
+        )
+    except Exception:
+        # If parsing fails, return the original signed URL rather than breaking responses
+        return url
 
 
 def _bucket_and_key(storage_uri: str, default_bucket: str | None) -> Tuple[str, str] | None:
@@ -33,11 +63,11 @@ def _bucket_and_key(storage_uri: str, default_bucket: str | None) -> Tuple[str, 
     return bucket, key
 
 
-def _build_s3_client():
+def _build_s3_client(endpoint_url: str | None):
     settings = get_settings()
     return boto3.client(
         "s3",
-        endpoint_url=settings.storage_endpoint_url,
+        endpoint_url=endpoint_url,
         aws_access_key_id=settings.storage_access_key,
         aws_secret_access_key=settings.storage_secret_key,
         config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
@@ -66,7 +96,9 @@ def generate_presigned_url(storage_uri: str | None, *, expires_in: int = 600) ->
     bucket, key = bucket_key
 
     try:
-        client = _build_s3_client()
+        endpoint_for_signing = settings.storage_public_endpoint_url or settings.storage_endpoint_url
+        client = _build_s3_client(endpoint_for_signing)
+
         return client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key, "ResponseContentDisposition": "inline"},
@@ -104,7 +136,7 @@ def upload_fileobj(file_obj, *, bucket: str | None = None, key: str | None = Non
         target_key = f"uploads/{uuid.uuid4().hex}"
 
     extra_args = {"ContentType": content_type} if content_type else None
-    client = _build_s3_client()
+    client = _build_s3_client(settings.storage_endpoint_url)
     client.upload_fileobj(file_obj, resolved_bucket, target_key, ExtraArgs=extra_args or {})
     return f"s3://{resolved_bucket}/{target_key}"
 
@@ -117,5 +149,5 @@ def download_to_path(storage_uri: str, destination: str) -> None:
         raise ValueError(f"Unsupported storage URI: {storage_uri}")
 
     bucket, key = bucket_key
-    client = _build_s3_client()
+    client = _build_s3_client(get_settings().storage_endpoint_url)
     client.download_file(bucket, key, destination)

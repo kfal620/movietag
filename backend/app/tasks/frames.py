@@ -15,7 +15,7 @@ from typing import Any, Iterable
 
 import numpy as np
 from PIL import Image
-from celery import shared_task
+from app.core.celery import celery_app
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -424,7 +424,7 @@ def _materialize_frame(frame: Frame) -> tuple[Path, bool]:
     raise FileNotFoundError("Frame content is unavailable (no storage_uri or signed_url)")
 
 
-@shared_task(name="frames.import")
+@celery_app.task(name="frames.import")
 def import_frame(
     file_path: str,
     movie_id: int | None = None,
@@ -505,7 +505,7 @@ def import_frame(
                 logger.warning("Failed to cleanup temp file %s", temp_file)
 
 
-@shared_task(name="frames.embed")
+@celery_app.task(name="frames.embed")
 def embed_frame(
     frame_id: int,
     embedding_model: str = "rgb-histogram-v1",
@@ -584,7 +584,7 @@ def embed_frame(
         }
 
 
-@shared_task(name="frames.tag")
+@celery_app.task(name="frames.tag")
 def tag_frame(
     frame_id: int,
     session_factory: SessionFactory | None = None,
@@ -638,7 +638,7 @@ def tag_frame(
         return {"status": "tagged", "frame_id": frame.id, "tags": applied_tags}
 
 
-@shared_task(name="frames.scene_attributes")
+@celery_app.task(name="frames.scene_attributes")
 def detect_scene_attributes(
     frame_id: int, session_factory: SessionFactory | None = None
 ) -> dict[str, Any]:
@@ -694,7 +694,7 @@ def detect_scene_attributes(
                 logger.warning("Could not cleanup scene attribute temp file for frame %s", frame_id)
 
 
-@shared_task(name="frames.actor_detections")
+@celery_app.task(name="frames.actor_detections")
 def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = None) -> dict[str, Any]:
     settings = get_settings()
     cleanup = False
@@ -808,14 +808,17 @@ def _match_frame(
         frame = session.get(Frame, frame_id)
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
+
         match = _match_frame_with_known_movies(session, frame)
-    return {
-        "status": "matched" if match else "unmatched",
-        "predicted_movie_id": frame.predicted_movie_id,
-        "match_confidence": frame.match_confidence,
-        "predicted_timestamp": frame.predicted_timestamp,
-        "predicted_shot_id": frame.predicted_shot_id,
-    }
+
+        # IMPORTANT: read ORM attributes while the session is still alive
+        return {
+            "status": "matched" if match else "unmatched",
+            "predicted_movie_id": frame.predicted_movie_id,
+            "match_confidence": frame.match_confidence,
+            "predicted_timestamp": frame.predicted_timestamp,
+            "predicted_shot_id": frame.predicted_shot_id,
+        }
 
 
 def _maybe_enqueue_enrichment(
@@ -838,7 +841,7 @@ def _maybe_enqueue_enrichment(
         )
 
 
-@shared_task(name="frames.enrich_metadata")
+@celery_app.task(name="frames.enrich_metadata")
 def enrich_frame_metadata(
     frame_id: int,
     tmdb_id: int,
@@ -895,7 +898,7 @@ def enrich_frame_metadata(
         }
 
 
-@shared_task(
+@celery_app.task(
     name="frames.pipeline",
     bind=True,
     autoretry_for=(Exception,),
