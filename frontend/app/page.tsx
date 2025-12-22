@@ -12,6 +12,8 @@ import { SceneAttributesForm } from "../components/SceneAttributesForm";
 import { ActorDetectionsForm } from "../components/ActorDetectionsForm";
 import { ExportPanel } from "../components/ExportPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { StorageExplorer } from "../components/StorageExplorer";
+import { FrameMetadataForm } from "../components/FrameMetadataForm";
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
   { label: "All", value: "all" },
@@ -37,6 +39,8 @@ type FrameApiItem = {
   scene_summary?: string | null;
   metadata_source?: string | null;
   match_confidence?: number | null;
+  storage_uri?: string | null;
+  captured_at?: string | null;
   tags?: { id: number; name: string; confidence?: number }[];
   scene_attributes?: { id: number; attribute: string; value: string; confidence?: number }[];
   actor_detections?: {
@@ -55,7 +59,16 @@ type FrameApiItem = {
 
 type FramesApiResponse = { items: FrameApiItem[]; total: number };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+const authedFetcher = async (url: string, token?: string) => {
+  const response = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
+  return response.json();
+};
 
 export default function Home() {
   const [movieFilter, setMovieFilter] = useState("");
@@ -63,6 +76,8 @@ export default function Home() {
   const [actorFilter, setActorFilter] = useState("");
   const [timeOfDayFilter, setTimeOfDayFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<Frame["status"] | "all">("all");
+  const [authToken, setAuthToken] = useState<string>("");
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -79,9 +94,20 @@ export default function Home() {
     return `/api/frames${search ? `?${search}` : ""}`;
   }, [actorFilter, movieFilter, statusFilter, tagFilter, timeOfDayFilter]);
 
-  const { data, mutate } = useSWR<FramesApiResponse>(framesUrl, fetcher, {
+  useEffect(() => {
+    const storedToken = window.localStorage.getItem("movietagToken");
+    if (storedToken) {
+      setAuthToken(storedToken);
+    }
+  }, []);
+
+  const { data, mutate } = useSWR<FramesApiResponse>(
+    [framesUrl, authToken],
+    ([url, token]) => authedFetcher(url, token),
+    {
     revalidateOnFocus: false,
-  });
+    },
+  );
 
   const frames: Frame[] = useMemo(
     () =>
@@ -102,6 +128,10 @@ export default function Home() {
           movieId: item.movie_id,
           movieTitle:
             item.movie_title || item.predicted_movie_title || (item.movie_id ? `Movie #${item.movie_id}` : "Unknown movie"),
+          filePath: item.file_path,
+          storageUri: item.storage_uri,
+          signedUrl: item.signed_url ?? undefined,
+          capturedAt: item.captured_at ?? undefined,
           predictedMovieId: item.predicted_movie_id,
           predictedMovieTitle: item.predicted_movie_title,
           imageUrl: item.signed_url || item.file_path,
@@ -168,7 +198,10 @@ export default function Home() {
         : { tags: [prediction.title] };
     fetch(`/api/frames/${frameId}/tags`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify(payload),
     }).then(() => mutate());
   };
@@ -176,7 +209,10 @@ export default function Home() {
   const saveSceneAttributes = (frameId: number, attributes: SceneAttribute[]) => {
     fetch(`/api/frames/${frameId}/scene-attributes`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({ attributes: attributes.map((attr) => ({ attribute: attr.attribute, value: attr.value, confidence: attr.confidence })) }),
     }).then(() => mutate());
   };
@@ -184,7 +220,10 @@ export default function Home() {
   const saveActorDetections = (frameId: number, actors: ActorDetection[]) => {
     fetch(`/api/frames/${frameId}/actors`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({
         actors: actors.map((actor) => ({
           cast_member_id: actor.castMemberId,
@@ -235,6 +274,81 @@ export default function Home() {
 
   const refreshFeed = () => {
     mutate();
+  };
+
+  const handleAuthTokenChange = (value: string) => {
+    setAuthToken(value);
+    if (value) {
+      window.localStorage.setItem("movietagToken", value);
+    } else {
+      window.localStorage.removeItem("movietagToken");
+    }
+  };
+
+  const ensureFrameForStorageObject = async (storageUri: string, filePath: string) => {
+    if (!authToken) {
+      setStorageMessage("Provide a moderator or admin token to load storage objects.");
+      return;
+    }
+    setStorageMessage(null);
+    try {
+      const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
+      let response = await fetch(`/api/frames/lookup?storage_uri=${encodeURIComponent(storageUri)}&file_path=${encodeURIComponent(filePath)}`, {
+        headers,
+      });
+
+      if (response.status === 404) {
+        response = await fetch("/api/frames/from-storage", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ storage_uri: storageUri, file_path: filePath }),
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const frame = (await response.json()) as Frame;
+      await mutate();
+      setSelectedFrameId(frame.id);
+      setStorageMessage(`Loaded frame #${frame.id} from storage.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load from storage.";
+      setStorageMessage(message);
+    }
+  };
+
+  const saveFrameMetadata = async (frameId: number, updates: Partial<Frame>) => {
+    if (!authToken) {
+      setStorageMessage("Provide a moderator or admin token to save changes.");
+      return;
+    }
+    const payload = {
+      movie_id: updates.movieId,
+      predicted_movie_id: updates.predictedMovieId,
+      predicted_timestamp: updates.predictedTimestamp,
+      predicted_shot_id: updates.predictedShotId,
+      shot_timestamp: updates.shotTimestamp,
+      scene_summary: updates.sceneSummary,
+      metadata_source: updates.metadataSource,
+      file_path: updates.filePath,
+      storage_uri: updates.storageUri,
+      match_confidence: updates.matchConfidence,
+      status: updates.status,
+      captured_at: updates.capturedAt,
+    };
+
+    await fetch(`/api/frames/${frameId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    await mutate();
+    setStorageMessage("Saved frame changes.");
   };
 
   const filtersSummary = useMemo(() => {
@@ -293,6 +407,14 @@ export default function Home() {
             onChange={(event) => setTimeOfDayFilter(event.target.value)}
             style={{ minWidth: 160 }}
           />
+          <input
+            className="input"
+            type="password"
+            placeholder="Moderator/Admin token"
+            value={authToken}
+            onChange={(event) => handleAuthTokenChange(event.target.value)}
+            style={{ minWidth: 220 }}
+          />
           {selectedFrame ? (
             <>
               <span className="pill">
@@ -311,17 +433,26 @@ export default function Home() {
       </Toolbar>
 
       <div className="page__content">
-        <section className="panel" aria-label="Frame grid">
-          <FrameGrid
-            frames={frames}
-            selectedId={selectedFrameId}
-            onSelect={setSelectedFrameId}
-            selectedForExport={exportSelection}
-            onToggleSelectForExport={toggleExportSelection}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <StorageExplorer
+            authToken={authToken}
+            onSelect={ensureFrameForStorageObject}
+            message={storageMessage}
+            onMessage={setStorageMessage}
           />
-        </section>
+          <section className="panel" aria-label="Frame grid">
+            <FrameGrid
+              frames={frames}
+              selectedId={selectedFrameId}
+              onSelect={setSelectedFrameId}
+              selectedForExport={exportSelection}
+              onToggleSelectForExport={toggleExportSelection}
+            />
+          </section>
+        </div>
         <aside className="panel" aria-label="Frame details">
           <FrameDetailsPanel frame={selectedFrame} />
+          <FrameMetadataForm frame={selectedFrame} onSave={saveFrameMetadata} />
           <OverrideForm frame={selectedFrame} onApply={applyOverride} />
           <SceneAttributesForm frame={selectedFrame} onSave={saveSceneAttributes} />
           <ActorDetectionsForm frame={selectedFrame} onSave={saveActorDetections} />

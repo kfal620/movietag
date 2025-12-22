@@ -57,6 +57,14 @@ export function FrameDetailsPanel({ frame }: Props) {
             <strong>{frame.sceneSummary || "Unknown"}</strong>
           </div>
           <div className="meta-box">
+            <label>File path</label>
+            <strong style={{ wordBreak: "break-all" }}>{frame.filePath}</strong>
+          </div>
+          <div className="meta-box">
+            <label>Storage URI</label>
+            <strong style={{ wordBreak: "break-all" }}>{frame.storageUri || "—"}</strong>
+          </div>
+          <div className="meta-box">
             <label>Tags</label>
             <strong>
               {frame.tags?.length

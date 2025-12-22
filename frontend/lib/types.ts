@@ -37,6 +37,9 @@ export type Frame = {
   id: number;
   movieId: number | null;
   movieTitle: string;
+  filePath: string;
+  storageUri?: string | null;
+  signedUrl?: string | null;
   predictedMovieId?: number | null;
   predictedMovieTitle?: string | null;
   imageUrl: string;
@@ -55,4 +58,5 @@ export type Frame = {
   tags?: Tag[];
   sceneAttributes?: SceneAttribute[];
   actors?: ActorDetection[];
+  capturedAt?: string | null;
 };

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 import json
 import logging
+from datetime import datetime
 from io import BytesIO
 
 from celery import chain
@@ -16,6 +17,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth import require_role
+from app.core.settings import get_settings
 from app.core.celery import celery_app
 from app.db import get_db
 from app.models import (
@@ -26,7 +28,12 @@ from app.models import (
     SceneAttribute,
     Tag,
 )
-from app.services.storage import resolve_frame_signed_url, upload_fileobj
+from app.services.storage import (
+    resolve_frame_signed_url,
+    upload_fileobj,
+    generate_presigned_url,
+    _build_s3_client,
+)
 from app.tasks.frames import ingest_and_tag_frame
 
 router = APIRouter(prefix="/frames", tags=["frames"])
@@ -133,6 +140,159 @@ def _apply_sort(query, sort: str):
     if sort.lstrip("-") == "updated_at":
         ordering = Frame.updated_at.desc() if sort.startswith("-") else Frame.updated_at
     return query.order_by(ordering)
+
+
+@router.get("/storage")
+def browse_storage(
+    prefix: str | None = None,
+    limit: int = 50,
+    cursor: str | None = Query(default=None, description="Continuation token from previous page"),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    """List raw objects from the configured frames bucket.
+
+    This is used by the frontend storage explorer to surface assets that may
+    not yet be ingested into the database.
+    """
+
+    settings = get_settings()
+    if not (
+        settings.storage_frames_bucket
+        and settings.storage_access_key
+        and settings.storage_secret_key
+    ):
+        raise HTTPException(status_code=503, detail="Storage is not configured")
+
+    client = _build_s3_client(settings.storage_endpoint_url)
+    params: dict[str, Any] = {
+        "Bucket": settings.storage_frames_bucket,
+        "MaxKeys": min(limit, 1000),
+    }
+    if prefix:
+        params["Prefix"] = prefix.lstrip("/")
+    if cursor:
+        params["ContinuationToken"] = cursor
+
+    try:
+        response = client.list_objects_v2(**params)
+    except Exception as exc:
+        logger.exception("Unable to list storage objects")
+        raise HTTPException(status_code=502, detail=f"Storage browse failed: {exc}") from exc
+
+    items = []
+    for obj in response.get("Contents", []):
+        storage_uri = f"s3://{settings.storage_frames_bucket}/{obj['Key']}"
+        items.append(
+            {
+                "key": obj["Key"],
+                "size": obj.get("Size"),
+                "last_modified": obj.get("LastModified"),
+                "storage_uri": storage_uri,
+                "signed_url": generate_presigned_url(storage_uri),
+            }
+        )
+
+    return {
+        "bucket": settings.storage_frames_bucket,
+        "items": items,
+        "prefix": prefix,
+        "truncated": response.get("IsTruncated", False),
+        "next_cursor": response.get("NextContinuationToken"),
+    }
+
+
+@router.get("/lookup")
+def lookup_frame(
+    storage_uri: str | None = None,
+    file_path: str | None = None,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    if not storage_uri and not file_path:
+        raise HTTPException(status_code=400, detail="storage_uri or file_path is required")
+
+    query = (
+        db.query(Frame)
+        .options(
+            joinedload(Frame.tags).joinedload(FrameTag.tag),
+            joinedload(Frame.scene_attributes),
+            joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
+            joinedload(Frame.movie),
+            joinedload(Frame.predicted_movie),
+        )
+    )
+
+    if storage_uri:
+        query = query.filter(Frame.storage_uri == storage_uri)
+    if file_path:
+        query = query.filter(Frame.file_path == file_path)
+
+    frame = query.one_or_none()
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+    return _serialize_frame(frame)
+
+
+class StorageFrameCreate(BaseModel):
+    storage_uri: str
+    file_path: str
+    movie_id: int | None = None
+    captured_at: datetime | None = None
+
+
+@router.post("/from-storage")
+def create_frame_from_storage(
+    payload: StorageFrameCreate,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = Frame(
+        storage_uri=payload.storage_uri,
+        file_path=payload.file_path,
+        movie_id=payload.movie_id,
+        captured_at=payload.captured_at,
+        ingested_at=datetime.utcnow(),
+        status="pending",
+    )
+    db.add(frame)
+    db.commit()
+    db.refresh(frame)
+    return _serialize_frame(frame)
+
+
+class FrameUpdateRequest(BaseModel):
+    movie_id: int | None = None
+    predicted_movie_id: int | None = None
+    predicted_timestamp: str | None = None
+    predicted_shot_id: str | None = None
+    shot_timestamp: str | None = None
+    scene_summary: str | None = None
+    metadata_source: str | None = None
+    file_path: str | None = None
+    storage_uri: str | None = None
+    match_confidence: float | None = None
+    status: str | None = None
+    captured_at: datetime | None = None
+
+
+@router.patch("/{frame_id}")
+def update_frame(
+    frame_id: int,
+    payload: FrameUpdateRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(frame, field, value)
+
+    db.add(frame)
+    db.commit()
+    db.refresh(frame)
+    return _serialize_frame(frame)
 
 
 @router.get("")
