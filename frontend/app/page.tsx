@@ -10,6 +10,7 @@ import { Toolbar } from "../components/Toolbar";
 import { ExportPanel } from "../components/ExportPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StorageExplorer } from "../components/StorageExplorer";
+import { Sidebar } from "../components/Sidebar";
 
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
@@ -73,6 +74,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<Frame["status"] | "all">("all");
   const [authToken, setAuthToken] = useState<string>("");
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
+  const [selectedView, setSelectedView] = useState("frames");
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -343,106 +345,132 @@ export default function Home() {
     return parts.length ? parts.join(" · ") : "All frames";
   }, [actorFilter, movieFilter, statusFilter, tagFilter, timeOfDayFilter]);
 
+  const renderPlaceholder = (title: string, description: string) => (
+    <section className="panel placeholder-panel" aria-label={`${title} view`}>
+      <div className="placeholder-panel__content">
+        <div>
+          <p className="pill pill--primary" aria-hidden="true">
+            Coming soon
+          </p>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <main className="page">
-      <Toolbar total={data?.total ?? frames.length} showing={frames.length} filtersSummary={filtersSummary} onRefresh={refreshFeed}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <label className="label" style={{ margin: 0 }}>
-            Status
-          </label>
-          <select
-            className="select"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as Frame["status"] | "all")}
-          >
-            {statusFilters.map((filter) => (
-              <option key={filter.value} value={filter.value}>
-                {filter.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input"
-            placeholder="Movie ID"
-            value={movieFilter}
-            onChange={(event) => setMovieFilter(event.target.value)}
-            style={{ minWidth: 120 }}
-          />
-          <input
-            className="input"
-            placeholder="Tags (comma-separated)"
-            value={tagFilter}
-            onChange={(event) => setTagFilter(event.target.value)}
-            style={{ minWidth: 180 }}
-          />
-          <input
-            className="input"
-            placeholder="Actor ID"
-            value={actorFilter}
-            onChange={(event) => setActorFilter(event.target.value)}
-            style={{ minWidth: 120 }}
-          />
-          <input
-            className="input"
-            placeholder="Time of day"
-            value={timeOfDayFilter}
-            onChange={(event) => setTimeOfDayFilter(event.target.value)}
-            style={{ minWidth: 160 }}
-          />
-          <input
-            className="input"
-            type="password"
-            placeholder="Moderator/Admin token"
-            value={authToken}
-            onChange={(event) => handleAuthTokenChange(event.target.value)}
-            style={{ minWidth: 220 }}
-          />
-          {selectedFrame ? (
-            <>
-              <span className="pill">
-                Confidence:{" "}
-                {selectedFrame.matchConfidence !== undefined && selectedFrame.matchConfidence !== null
-                  ? `${(selectedFrame.matchConfidence * 100).toFixed(1)}%`
-                  : "—"}
-              </span>
-              <span className="pill">
-                Time: {selectedFrame.shotTimestamp || selectedFrame.predictedTimestamp || "Unknown"}
-              </span>
-              {selectedFrame.metadataSource ? <span className="pill">Source: {selectedFrame.metadataSource}</span> : null}
-            </>
-          ) : null}
-        </div>
-      </Toolbar>
-
-      <div className="page__content">
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <StorageExplorer
-            authToken={authToken}
-            onSelect={ensureFrameForStorageObject}
-            message={storageMessage}
-          />
-          <section className="panel" aria-label="Frame grid">
-            <FrameGrid
-              frames={frames}
-              selectedId={selectedFrameId}
-              onSelect={setSelectedFrameId}
-              selectedForExport={exportSelection}
-              onToggleSelectForExport={toggleExportSelection}
+      <Sidebar selectedView={selectedView} onSelect={setSelectedView} />
+      <div className="page__main">
+        <Toolbar total={data?.total ?? frames.length} showing={frames.length} filtersSummary={filtersSummary} onRefresh={refreshFeed}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label className="label" style={{ margin: 0 }}>
+              Status
+            </label>
+            <select
+              className="select"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as Frame["status"] | "all")}
+            >
+              {statusFilters.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input"
+              placeholder="Movie ID"
+              value={movieFilter}
+              onChange={(event) => setMovieFilter(event.target.value)}
+              style={{ minWidth: 120 }}
             />
-          </section>
+            <input
+              className="input"
+              placeholder="Tags (comma-separated)"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              style={{ minWidth: 180 }}
+            />
+            <input
+              className="input"
+              placeholder="Actor ID"
+              value={actorFilter}
+              onChange={(event) => setActorFilter(event.target.value)}
+              style={{ minWidth: 120 }}
+            />
+            <input
+              className="input"
+              placeholder="Time of day"
+              value={timeOfDayFilter}
+              onChange={(event) => setTimeOfDayFilter(event.target.value)}
+              style={{ minWidth: 160 }}
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder="Moderator/Admin token"
+              value={authToken}
+              onChange={(event) => handleAuthTokenChange(event.target.value)}
+              style={{ minWidth: 220 }}
+            />
+            {selectedFrame ? (
+              <>
+                <span className="pill">
+                  Confidence:{" "}
+                  {selectedFrame.matchConfidence !== undefined && selectedFrame.matchConfidence !== null
+                    ? `${(selectedFrame.matchConfidence * 100).toFixed(1)}%`
+                    : "—"}
+                </span>
+                <span className="pill">
+                  Time: {selectedFrame.shotTimestamp || selectedFrame.predictedTimestamp || "Unknown"}
+                </span>
+                {selectedFrame.metadataSource ? <span className="pill">Source: {selectedFrame.metadataSource}</span> : null}
+              </>
+            ) : null}
+          </div>
+        </Toolbar>
+
+        <div className="page__content">
+          {selectedView === "frames" ? (
+            <div className="content-grid">
+              <div className="content-grid__main">
+                <StorageExplorer
+                  authToken={authToken}
+                  onSelect={ensureFrameForStorageObject}
+                  message={storageMessage}
+                />
+                <section className="panel" aria-label="Frame grid">
+                  <FrameGrid
+                    frames={frames}
+                    selectedId={selectedFrameId}
+                    onSelect={setSelectedFrameId}
+                    selectedForExport={exportSelection}
+                    onToggleSelectForExport={toggleExportSelection}
+                  />
+                </section>
+              </div>
+              <aside className="panel content-grid__sidebar" aria-label="Frame details" style={{ height: "100%", padding: 0 }}>
+                <FrameSidebar
+                  frame={selectedFrame}
+                  onSaveMetadata={saveFrameMetadata}
+                  onApplyOverride={applyOverride}
+                  onSaveScene={saveSceneAttributes}
+                  onSaveActors={saveActorDetections}
+                >
+                  <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
+                  <SettingsPanel />
+                </FrameSidebar>
+              </aside>
+            </div>
+          ) : null}
+          {selectedView === "dashboard" ? renderPlaceholder("Dashboard", "Monitor tagging throughput, queues, and automated signals in one view.") : null}
+          {selectedView === "tasks" ? renderPlaceholder("Tasks", "Track review assignments, approvals, and ownership across teams.") : null}
+          {selectedView === "settings" ? renderPlaceholder("Settings", "Configure ingest, retention, access controls, and feature flags.") : null}
+          {selectedView === "models" ? renderPlaceholder("Models", "Manage pipelines, versions, and rollout strategies for inference.") : null}
+          {selectedView === "support" ? renderPlaceholder("Support", "Reach the help desk, docs, and operational runbooks.") : null}
         </div>
-        <aside className="panel" aria-label="Frame details" style={{ height: "100%", padding: 0 }}>
-          <FrameSidebar
-            frame={selectedFrame}
-            onSaveMetadata={saveFrameMetadata}
-            onApplyOverride={applyOverride}
-            onSaveScene={saveSceneAttributes}
-            onSaveActors={saveActorDetections}
-          >
-            <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
-            <SettingsPanel />
-          </FrameSidebar>
-        </aside>
       </div>
     </main>
   );
