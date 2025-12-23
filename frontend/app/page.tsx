@@ -26,6 +26,8 @@ type FrameApiItem = {
   id: number;
   movie_id: number | null;
   movie_title?: string | null;
+  predicted_movie_id?: number | null;
+  predicted_movie_title?: string | null;
   status: Frame["status"];
   signed_url?: string | null;
   file_path: string;
@@ -127,6 +129,8 @@ export default function Home() {
           movieId: item.movie_id,
           movieTitle:
             item.movie_title || (item.movie_id ? `Movie #${item.movie_id}` : "Unknown movie"),
+          predictedMovieId: item.predicted_movie_id ?? null,
+          predictedMovieTitle: item.predicted_movie_title ?? null,
           filePath: item.file_path,
           storageUri: item.storage_uri,
           signedUrl: item.signed_url ?? undefined,
@@ -236,6 +240,25 @@ export default function Home() {
         })),
       }),
     }).then(() => mutate());
+  };
+
+  const assignFrameToTmdb = async (frameId: number, tmdbId: number) => {
+    if (!authToken) {
+      throw new Error("Provide a moderator or admin token to assign a movie.");
+    }
+    const response = await fetch(`/api/frames/${frameId}/assign-tmdb`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ tmdb_id: tmdbId }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || "Unable to assign movie.");
+    }
+    await mutate();
   };
 
   const toggleExportSelection = (frameId: number) => {
@@ -460,10 +483,12 @@ export default function Home() {
               <aside className="panel content-grid__sidebar" aria-label="Frame details" style={{ height: "100%", padding: 0 }}>
                 <FrameSidebar
                   frame={selectedFrame}
+                  authToken={authToken}
                   onSaveMetadata={saveFrameMetadata}
                   onApplyOverride={applyOverride}
                   onSaveScene={saveSceneAttributes}
                   onSaveActors={saveActorDetections}
+                  onAssignTmdb={assignFrameToTmdb}
                 >
                   <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
                 </FrameSidebar>

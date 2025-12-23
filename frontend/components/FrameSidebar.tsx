@@ -6,19 +6,23 @@ import { FrameEditPanel } from "./FrameEditPanel";
 
 type Props = {
     frame?: Frame;
+    authToken?: string;
     onSaveMetadata: (frameId: number, updates: Partial<Frame>) => void;
     onApplyOverride: (frameId: number, prediction: Prediction | string) => void;
     onSaveScene: (frameId: number, attributes: SceneAttribute[]) => void;
     onSaveActors: (frameId: number, detections: ActorDetection[]) => void;
+    onAssignTmdb: (frameId: number, tmdbId: number) => Promise<void>;
     children?: React.ReactNode;
 };
 
 export function FrameSidebar({
     frame,
+    authToken,
     onSaveMetadata,
     onApplyOverride,
     onSaveScene,
     onSaveActors,
+    onAssignTmdb,
     children,
 }: Props) {
     const [mode, setMode] = useState<"view" | "edit">("view");
@@ -73,7 +77,7 @@ export function FrameSidebar({
             <div style={{ overflowY: "auto", flexGrow: 1 }}>
                 {mode === "view" ? (
                     <>
-                        <FrameDetailsPanel frame={frame} />
+                        <FrameDetailsPanel frame={frame} authToken={authToken} onAssignTmdb={onAssignTmdb} />
                         {children}
                     </>
                 ) : (

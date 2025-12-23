@@ -33,10 +33,20 @@ export type ActorDetection = {
   poseRoll?: number | null;
 };
 
+export type TmdbSearchResult = {
+  tmdb_id: number;
+  title: string;
+  release_year?: number | null;
+  overview?: string | null;
+  poster_path?: string | null;
+};
+
 export type Frame = {
   id: number;
   movieId: number | null;
   movieTitle: string;
+  predictedMovieId?: number | null;
+  predictedMovieTitle?: string | null;
   filePath: string;
   storageUri?: string | null;
   signedUrl?: string | null;
