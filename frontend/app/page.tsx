@@ -360,7 +360,7 @@ export default function Home() {
   );
 
   return (
-    <main className="page">
+    <main className="page" data-testid="app-shell">
       <Sidebar selectedView={selectedView} onSelect={setSelectedView} />
       <div className="page__main">
         <Toolbar total={data?.total ?? frames.length} showing={frames.length} filtersSummary={filtersSummary} onRefresh={refreshFeed}>
