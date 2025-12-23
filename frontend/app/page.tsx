@@ -82,6 +82,8 @@ export default function Home() {
   const [timeOfDayFilter, setTimeOfDayFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<Frame["status"] | "all">("all");
   const [authToken, setAuthToken] = useState<string>("");
+  const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState("frames");
 
@@ -272,6 +274,8 @@ export default function Home() {
   };
 
   const handleAuthTokenChange = (value: string) => {
+    setSettingsStatus(null);
+    setSettingsError(null);
     setAuthToken(value);
     if (value) {
       window.localStorage.setItem("movietagToken", value);
@@ -417,14 +421,6 @@ export default function Home() {
               onChange={(event) => setTimeOfDayFilter(event.target.value)}
               style={{ minWidth: 160 }}
             />
-            <input
-              className="input"
-              type="password"
-              placeholder="Moderator/Admin token"
-              value={authToken}
-              onChange={(event) => handleAuthTokenChange(event.target.value)}
-              style={{ minWidth: 220 }}
-            />
             {selectedFrame ? (
               <>
                 <span className="pill">
@@ -470,14 +466,80 @@ export default function Home() {
                   onSaveActors={saveActorDetections}
                 >
                   <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
-                  <SettingsPanel />
                 </FrameSidebar>
               </aside>
             </div>
           ) : null}
           {selectedView === "dashboard" ? renderPlaceholder("Dashboard", "Monitor tagging throughput, queues, and automated signals in one view.") : null}
           {selectedView === "tasks" ? renderPlaceholder("Tasks", "Track review assignments, approvals, and ownership across teams.") : null}
-          {selectedView === "settings" ? renderPlaceholder("Settings", "Configure ingest, retention, access controls, and feature flags.") : null}
+          {selectedView === "settings" ? (
+            <div className="settings-layout">
+              <div className="settings-hero">
+                <div>
+                  <p className="eyebrow">Workspace settings</p>
+                  <h2>Control access, APIs, and backend configuration</h2>
+                  <p className="muted" style={{ maxWidth: 640 }}>
+                    Store the tokens you use for moderation and administration, then manage storage and metadata
+                    provider settings—all in one place.
+                  </p>
+                </div>
+              </div>
+              <div className="settings-grid">
+                <section className="settings-card">
+                  <div className="settings-card__header">
+                    <div>
+                      <p className="eyebrow">Access</p>
+                      <h3 style={{ margin: "0.15rem 0 0.35rem" }}>Moderator & admin tokens</h3>
+                      <p className="muted">
+                        These tokens authenticate calls to the frame API and storage browser. They stay in your
+                        browser storage until cleared.
+                      </p>
+                    </div>
+                    {authToken ? <span className="pill pill--primary">Active</span> : <span className="pill">Not set</span>}
+                  </div>
+                  <div className="settings-card__body">
+                    <div className="settings-grid settings-grid--two">
+                      <div className="settings-field">
+                        <label className="label" htmlFor="moderatorToken">
+                          Moderator/Admin token
+                        </label>
+                        <input
+                          id="moderatorToken"
+                          className="input"
+                          type="password"
+                          placeholder="Bearer token for frame actions"
+                          value={authToken}
+                          onChange={(event) => handleAuthTokenChange(event.target.value)}
+                        />
+                        <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                          Used for frame edits, storage lookups, and exports.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="settings-card__footer">
+                    <div>
+                      {settingsStatus ? <p style={{ color: "var(--success)", margin: "0.4rem 0 0" }}>{settingsStatus}</p> : null}
+                      {settingsError ? <p style={{ color: "var(--danger)", margin: "0.4rem 0 0" }}>{settingsError}</p> : null}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="button" onClick={() => handleAuthTokenChange("")}>
+                        Clear token
+                      </button>
+                      <button
+                        className="button button--primary"
+                        onClick={() => setSettingsStatus("Token saved to browser storage.")}
+                        disabled={!authToken}
+                      >
+                        Save token
+                      </button>
+                    </div>
+                  </div>
+                </section>
+                <SettingsPanel className="settings-card--full" />
+              </div>
+            </div>
+          ) : null}
           {selectedView === "models" ? renderPlaceholder("Models", "Manage pipelines, versions, and rollout strategies for inference.") : null}
           {selectedView === "support" ? renderPlaceholder("Support", "Reach the help desk, docs, and operational runbooks.") : null}
         </div>
