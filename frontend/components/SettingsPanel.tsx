@@ -18,7 +18,11 @@ const emptySettings: RuntimeSettings = {
   omdbApiKey: "",
 };
 
-export function SettingsPanel() {
+type SettingsPanelProps = {
+  className?: string;
+};
+
+export function SettingsPanel({ className }: SettingsPanelProps) {
   const [adminToken, setAdminToken] = useState("");
   const [settings, setSettings] = useState<RuntimeSettings>(emptySettings);
   const [status, setStatus] = useState<string | null>(null);
@@ -132,129 +136,157 @@ export function SettingsPanel() {
   };
 
   return (
-    <div className="sidebar__section" aria-live="polite">
-      <h4>Backend configuration</h4>
-      <p>Provide the admin token to update storage and metadata provider settings.</p>
-
-      <label className="label" htmlFor="adminToken">
-        Admin bearer token
-      </label>
-      <input
-        id="adminToken"
-        className="input"
-        type="password"
-        placeholder="APP_ADMIN_TOKEN value"
-        value={adminToken}
-        onChange={(event) => updateToken(event.target.value)}
-      />
-      {!adminToken ? (
-        <p style={{ color: "var(--muted)", margin: "0.25rem 0" }}>
-          Enter a token to load and save settings.
-        </p>
-      ) : null}
-
-      <div style={{ display: "grid", gap: "0.5rem", marginTop: "1rem" }}>
-        <label className="label" htmlFor="storageEndpoint">
-          Storage endpoint URL
-        </label>
-        <input
-          id="storageEndpoint"
-          className="input"
-          placeholder="https://minio.example.com"
-          value={settings.storageEndpointUrl}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, storageEndpointUrl: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
-
-        <label className="label" htmlFor="storageAccessKey">
-          Storage access key
-        </label>
-        <input
-          id="storageAccessKey"
-          className="input"
-          placeholder="Access key"
-          value={settings.storageAccessKey}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, storageAccessKey: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
-
-        <label className="label" htmlFor="storageSecretKey">
-          Storage secret key
-        </label>
-        <input
-          id="storageSecretKey"
-          className="input"
-          type="password"
-          placeholder="Secret key"
-          value={settings.storageSecretKey}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, storageSecretKey: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
-
-        <label className="label" htmlFor="storageBucket">
-          Frames bucket
-        </label>
-        <input
-          id="storageBucket"
-          className="input"
-          placeholder="frames"
-          value={settings.storageFramesBucket}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, storageFramesBucket: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
-
-        <label className="label" htmlFor="tmdbKey">
-          TMDb API key
-        </label>
-        <input
-          id="tmdbKey"
-          className="input"
-          placeholder="TMDb v4 token"
-          value={settings.tmdbApiKey}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, tmdbApiKey: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
-
-        <label className="label" htmlFor="omdbKey">
-          OMDb API key
-        </label>
-        <input
-          id="omdbKey"
-          className="input"
-          placeholder="OMDb API key"
-          value={settings.omdbApiKey}
-          onChange={(event) =>
-            setSettings((prev) => ({ ...prev, omdbApiKey: event.target.value }))
-          }
-          disabled={!adminToken || loading}
-        />
+    <div className={`settings-card ${className ?? ""}`.trim()} aria-live="polite">
+      <div className="settings-card__header">
+        <div>
+          <p className="eyebrow">Backend configuration</p>
+          <h3 style={{ margin: "0.1rem 0 0.35rem" }}>Storage & metadata providers</h3>
+          <p className="muted">
+            Use an admin token to view and update connections used for uploads, lookups, and enrichment.
+          </p>
+        </div>
+        <span className="pill pill--primary" aria-label="Admin only">
+          Admin
+        </span>
       </div>
 
-      {status ? (
-        <p style={{ color: "var(--success)", marginTop: "0.75rem" }}>{status}</p>
-      ) : null}
-      {error ? (
-        <p style={{ color: "var(--danger)", marginTop: "0.75rem" }}>{error}</p>
-      ) : null}
+      <div className="settings-card__body">
+        <div className="settings-grid">
+          <div className="settings-field">
+            <label className="label" htmlFor="adminToken">
+              Admin bearer token
+            </label>
+            <input
+              id="adminToken"
+              className="input"
+              type="password"
+              placeholder="APP_ADMIN_TOKEN value"
+              value={adminToken}
+              onChange={(event) => updateToken(event.target.value)}
+            />
+            {!adminToken ? (
+              <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                Enter a token to load and save backend settings.
+              </p>
+            ) : (
+              <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                The token is stored in your browser for this session.
+              </p>
+            )}
+          </div>
 
-      <button
-        className="button button--primary"
-        style={{ marginTop: "1rem", width: "100%" }}
-        onClick={handleSave}
-        disabled={!adminToken || saving || loading}
-      >
-        {saving ? "Saving..." : "Save settings"}
-      </button>
+          <div className="settings-field">
+            <label className="label" htmlFor="storageEndpoint">
+              Storage endpoint URL
+            </label>
+            <input
+              id="storageEndpoint"
+              className="input"
+              placeholder="https://minio.example.com"
+              value={settings.storageEndpointUrl}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, storageEndpointUrl: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+
+          <div className="settings-field">
+            <label className="label" htmlFor="storageAccessKey">
+              Storage access key
+            </label>
+            <input
+              id="storageAccessKey"
+              className="input"
+              placeholder="Access key"
+              value={settings.storageAccessKey}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, storageAccessKey: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+
+          <div className="settings-field">
+            <label className="label" htmlFor="storageSecretKey">
+              Storage secret key
+            </label>
+            <input
+              id="storageSecretKey"
+              className="input"
+              type="password"
+              placeholder="Secret key"
+              value={settings.storageSecretKey}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, storageSecretKey: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+
+          <div className="settings-field">
+            <label className="label" htmlFor="storageBucket">
+              Frames bucket
+            </label>
+            <input
+              id="storageBucket"
+              className="input"
+              placeholder="frames"
+              value={settings.storageFramesBucket}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, storageFramesBucket: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+
+          <div className="settings-field">
+            <label className="label" htmlFor="tmdbKey">
+              TMDb API key
+            </label>
+            <input
+              id="tmdbKey"
+              className="input"
+              placeholder="TMDb v4 token"
+              value={settings.tmdbApiKey}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, tmdbApiKey: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+
+          <div className="settings-field">
+            <label className="label" htmlFor="omdbKey">
+              OMDb API key
+            </label>
+            <input
+              id="omdbKey"
+              className="input"
+              placeholder="OMDb API key"
+              value={settings.omdbApiKey}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, omdbApiKey: event.target.value }))
+              }
+              disabled={!adminToken || loading}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card__footer">
+        <div>
+          {status ? <p style={{ color: "var(--success)", margin: "0.4rem 0 0" }}>{status}</p> : null}
+          {error ? <p style={{ color: "var(--danger)", margin: "0.4rem 0 0" }}>{error}</p> : null}
+        </div>
+        <button
+          className="button button--primary"
+          onClick={handleSave}
+          disabled={!adminToken || saving || loading}
+        >
+          {saving ? "Saving..." : "Save settings"}
+        </button>
+      </div>
     </div>
   );
 }
