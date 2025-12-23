@@ -1,3 +1,10 @@
+import util from "util";
+
+// Silence Node's deprecation warning by swapping the legacy helper with Object.assign.
+if (typeof util._extend === "function" && util._extend !== Object.assign) {
+  util._extend = Object.assign;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -23,12 +30,26 @@ const nextConfig = {
         protocol: "https",
         hostname: "m.media-amazon.com",
       },
-      { 
-        protocol: "http", 
-        hostname: "localhost", 
-        port: "9000", 
-        pathname: "/**" 
-      }
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "9000",
+        pathname: "/**",
+      },
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "9000",
+        pathname: "/**",
+      },
+      {
+        protocol: "http",
+        hostname: "**",
+      },
+      {
+        protocol: "https",
+        hostname: "**",
+      },
     ],
   },
 };

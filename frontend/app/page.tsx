@@ -66,6 +66,15 @@ const authedFetcher = async (url: string, token?: string) => {
   return response.json();
 };
 
+const deriveImageUrl = (item: FrameApiItem): string => {
+  const candidates = [item.signed_url, item.file_path, item.storage_uri];
+  const resolved = candidates.find(
+    (value) => value?.startsWith("http://") || value?.startsWith("https://"),
+  );
+
+  return resolved ?? "/placeholder-thumbnail.svg";
+};
+
 export default function Home() {
   const [movieFilter, setMovieFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
@@ -119,6 +128,7 @@ export default function Home() {
           filePath: item.file_path,
           storageUri: item.storage_uri,
           signedUrl: item.signed_url ?? undefined,
+          imageUrl: deriveImageUrl(item),
           capturedAt: item.captured_at ?? undefined,
           predictions,
           status: item.status,
