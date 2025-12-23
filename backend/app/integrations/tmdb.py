@@ -55,6 +55,15 @@ class TMDBClient:
         response.raise_for_status()
         return response.json()
 
+    def search_movies(self, query: str, *, year: int | None = None) -> dict[str, Any]:
+        """Search TMDb for movies by title (and optional release year)."""
+        params: dict[str, Any] = {"query": query}
+        if year is not None:
+            params["year"] = year
+        response = self._client.get("/search/movie", params=params)
+        response.raise_for_status()
+        return response.json()
+
 
 class MovieMetadataProvider(Protocol):
     """Interface for pluggable movie metadata providers."""
@@ -267,6 +276,7 @@ class TMDBIngestor:
         movie.title = title
         movie.description = description
         movie.release_year = release_year
+        movie.metadata_json = payload
 
         session.add(movie)
         session.flush()

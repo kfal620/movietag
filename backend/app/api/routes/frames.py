@@ -20,6 +20,7 @@ from app.core.auth import require_role
 from app.core.settings import get_settings
 from app.core.celery import celery_app
 from app.db import get_db
+from app.integrations.tmdb import TMDBIngestor
 from app.models import (
     ActorDetection,
     Frame,
@@ -284,6 +285,49 @@ def update_frame(
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(frame, field, value)
+
+    db.add(frame)
+    db.commit()
+    db.refresh(frame)
+    return _serialize_frame(frame)
+
+
+class TMDBAssignmentRequest(BaseModel):
+    tmdb_id: int
+
+
+@router.post("/{frame_id}/assign-tmdb")
+def assign_frame_tmdb(
+    frame_id: int,
+    payload: TMDBAssignmentRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    ingestor = TMDBIngestor()
+    try:
+        ingest_result = ingestor.ingest_movie(payload.tmdb_id)
+    except Exception as exc:
+        logger.exception("TMDb ingest failed for frame %s", frame_id)
+        raise HTTPException(status_code=502, detail=f"TMDb ingest failed: {exc}") from exc
+
+    movie_id = ingest_result.get("movie_id")
+    if movie_id is None:
+        raise HTTPException(status_code=502, detail="TMDb ingest did not yield a movie id")
+
+    movie = db.get(Movie, movie_id)
+    if movie is None:
+        raise HTTPException(status_code=404, detail="Movie not found after ingest")
+
+    frame.movie_id = movie.id
+    frame.match_confidence = 1.0
+    frame.status = "confirmed"
+    frame.metadata_source = ingest_result.get("provider") or "tmdb"
+    if frame.scene_summary is None and movie.description:
+        frame.scene_summary = movie.description
 
     db.add(frame)
     db.commit()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,11 +9,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth import require_role
 from app.core.celery import celery_app
+from app.core.settings import get_settings
 from app.db import get_db
+from app.integrations.tmdb import TMDBClient, _parse_release_year
 from app.models import Artwork, CastMember, Movie, MovieCast
 from app.tasks.tmdb import ingest_movie_from_tmdb
 
 router = APIRouter(prefix="/movies", tags=["movies"])
+logger = logging.getLogger(__name__)
 
 
 def _serialize_movie(movie: Movie) -> dict[str, Any]:
@@ -72,6 +76,49 @@ def list_movies(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/search")
+def search_tmdb_movies(
+    q: str = Query(..., description="Movie title to search for"),
+    year: int | None = Query(default=None, description="Optional release year filter"),
+    limit: int = Query(default=5, ge=1, le=20),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    query = q.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+
+    settings = get_settings()
+    if not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDb is not configured")
+
+    client = TMDBClient()
+    try:
+        response = client.search_movies(query, year=year)
+    except Exception as exc:
+        logger.exception("TMDb search failed for %s", query)
+        raise HTTPException(status_code=502, detail=f"TMDb search failed: {exc}") from exc
+
+    results: list[dict[str, Any]] = []
+    for entry in response.get("results", []):
+        tmdb_id = entry.get("id")
+        title = entry.get("title") or entry.get("original_title")
+        if tmdb_id is None or not title:
+            continue
+        results.append(
+            {
+                "tmdb_id": tmdb_id,
+                "title": title,
+                "release_year": _parse_release_year(entry.get("release_date")),
+                "overview": entry.get("overview"),
+                "poster_path": entry.get("poster_path"),
+            }
+        )
+        if len(results) >= limit:
+            break
+
+    return {"items": results}
 
 
 @router.get("/{movie_id}")

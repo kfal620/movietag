@@ -6,6 +6,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -25,6 +26,7 @@ class Movie(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     release_year = Column(Integer, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
