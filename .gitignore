@@ -33,3 +33,7 @@ next-env.d.ts
 backend/app/.DS_Store
 backend/app/.DS_Store
 backend/app/.DS_Store
+.DS_Store
+.gitignore
+frontend/.DS_Store
+.gitignore

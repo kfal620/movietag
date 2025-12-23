@@ -118,7 +118,6 @@ export default function Home() {
           storageUri: item.storage_uri,
           signedUrl: item.signed_url ?? undefined,
           capturedAt: item.captured_at ?? undefined,
-          capturedAt: item.captured_at ?? undefined,
           predictions,
           status: item.status,
           tags: item.tags?.map((tag) => ({ id: tag.id, name: tag.name, confidence: tag.confidence })) ?? [],
