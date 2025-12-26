@@ -465,11 +465,6 @@ export default function Home() {
           {selectedView === "frames" ? (
             <div className="content-grid">
               <div className="content-grid__main">
-                <StorageExplorer
-                  authToken={authToken}
-                  onSelect={ensureFrameForStorageObject}
-                  message={storageMessage}
-                />
                 <section className="panel" aria-label="Frame grid">
                   <FrameGrid
                     frames={frames}
@@ -493,6 +488,17 @@ export default function Home() {
                   <ExportPanel selectedFrames={selectedForExport} onExport={exportFrames} onClear={() => setExportSelection(new Set())} />
                 </FrameSidebar>
               </aside>
+            </div>
+          ) : null}
+          {selectedView === "storage" ? (
+            <div className="content-grid content-grid--single">
+              <div className="content-grid__main">
+                <StorageExplorer
+                  authToken={authToken}
+                  onSelect={ensureFrameForStorageObject}
+                  message={storageMessage}
+                />
+              </div>
             </div>
           ) : null}
           {selectedView === "dashboard" ? renderPlaceholder("Dashboard", "Monitor tagging throughput, queues, and automated signals in one view.") : null}
