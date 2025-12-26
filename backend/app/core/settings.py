@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Optional, Union
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,15 +48,15 @@ class Settings(BaseSettings):
             "APP_CELERY_DEFAULT_QUEUE", "CELERY_DEFAULT_QUEUE"
         ),
     )
-    tmdb_api_key: str | None = Field(
-        default=None,
+    tmdb_api_key: Optional[str] = Field(
+        default="b9c1f62dcbb3d3a66f3631a1b95386c4",  # Hardcoded TMDB API key
         validation_alias=AliasChoices("APP_TMDB_API_KEY", "TMDB_API_KEY"),
     )
     tmdb_base_url: str = Field(
         default="https://api.themoviedb.org/3",
         validation_alias=AliasChoices("APP_TMDB_BASE_URL", "TMDB_BASE_URL"),
     )
-    omdb_api_key: str | None = Field(
+    omdb_api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("APP_OMDB_API_KEY", "OMDB_API_KEY"),
     )
@@ -61,25 +64,25 @@ class Settings(BaseSettings):
         default="https://www.omdbapi.com",
         validation_alias=AliasChoices("APP_OMDB_BASE_URL", "OMDB_BASE_URL"),
     )
-    storage_endpoint_url: str | None = Field(
+    storage_endpoint_url: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_ENDPOINT_URL", "STORAGE_ENDPOINT_URL"),
     )
-    storage_public_endpoint_url: str | None = Field(
+    storage_public_endpoint_url: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices(
             "APP_STORAGE_PUBLIC_ENDPOINT_URL", "STORAGE_PUBLIC_ENDPOINT_URL"
         ),
     )
-    storage_access_key: str | None = Field(
+    storage_access_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_ACCESS_KEY", "STORAGE_ACCESS_KEY"),
     )
-    storage_secret_key: str | None = Field(
+    storage_secret_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("APP_STORAGE_SECRET_KEY", "STORAGE_SECRET_KEY"),
     )
-    storage_frames_bucket: str | None = Field(
+    storage_frames_bucket: Optional[str] = Field(
         default="frames",
         validation_alias=AliasChoices("APP_STORAGE_FRAMES_BUCKET", "STORAGE_FRAMES_BUCKET"),
     )
@@ -95,26 +98,26 @@ class Settings(BaseSettings):
         default=0.9,
         validation_alias=AliasChoices("APP_FACE_MIN_CONFIDENCE", "FACE_MIN_CONFIDENCE"),
     )
-    embedding_service_url: str | None = Field(
+    embedding_service_url: Optional[str] = Field(
         default=None,
         description="Optional HTTP endpoint for an embedding service (CLIP/ViT).",
         validation_alias=AliasChoices(
             "APP_EMBEDDING_SERVICE_URL", "EMBEDDING_SERVICE_URL"
         ),
     )
-    embedding_model_version: str | None = Field(
+    embedding_model_version: Optional[str] = Field(
         default=None,
         description="Model revision or ONNX path for embeddings.",
         validation_alias=AliasChoices(
             "APP_EMBEDDING_MODEL_VERSION", "EMBEDDING_MODEL_VERSION"
         ),
     )
-    vision_model_path: str | None = Field(
+    vision_model_path: Optional[str] = Field(
         default=None,
         description="Optional local ONNX/weights path for scene/vision models.",
         validation_alias=AliasChoices("APP_VISION_MODEL_PATH", "VISION_MODEL_PATH"),
     )
-    vision_service_url: str | None = Field(
+    vision_service_url: Optional[str] = Field(
         default=None,
         description="HTTP endpoint for production scene understanding models.",
         validation_alias=AliasChoices("APP_VISION_SERVICE_URL", "VISION_SERVICE_URL"),
@@ -133,7 +136,7 @@ class Settings(BaseSettings):
             "APP_FACE_UNKNOWN_MATCH_THRESHOLD", "FACE_UNKNOWN_MATCH_THRESHOLD"
         ),
     )
-    face_analytics_service_url: str | None = Field(
+    face_analytics_service_url: Optional[str] = Field(
         default=None,
         description="HTTP endpoint for production-grade face analytics (emotion/pose/embedding).",
         validation_alias=AliasChoices(
