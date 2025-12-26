@@ -231,6 +231,9 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
 
       <div className="sidebar__section">
         <h4>Scene attributes</h4>
+        <p className="muted" style={{ marginTop: -4 }}>
+          Source: vision pipeline · Confidence shown per attribute
+        </p>
         {frame.sceneAttributes?.length ? (
           <ul className="list">
             {frame.sceneAttributes.map((attr) => (
@@ -249,6 +252,9 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
 
       <div className="sidebar__section">
         <h4>Actor detections</h4>
+        <p className="muted" style={{ marginTop: -4 }}>
+          Source: vision pipeline · Confidence reflects match strength
+        </p>
         {frame.actors?.length ? (
           <ul className="list">
             {frame.actors.map((actor) => (

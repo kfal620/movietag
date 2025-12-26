@@ -23,6 +23,9 @@ const statusBadge = {
 
 export function FrameCard({ frame, isActive, onSelect, selectedForExport, onToggleSelect }: Props) {
   const badge = statusBadge[frame.status] ?? statusBadge.pending;
+  const timeOfDay = frame.sceneAttributes?.find((attr) => attr.attribute === "time_of_day")?.value;
+  const environment = frame.sceneAttributes?.find((attr) => attr.attribute === "environment")?.value;
+  const actorsCount = frame.actors?.length ?? 0;
 
   return (
     <article
@@ -71,6 +74,11 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
               {frame.tags.map((tag) => tag.name).join(", ")}
             </span>
           ) : null}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+          {timeOfDay ? <span className="chip chip--muted">{timeOfDay}</span> : null}
+          {environment ? <span className="chip chip--muted">{environment}</span> : null}
+          <span className="chip chip--muted">{actorsCount} actors</span>
         </div>
       </div>
     </article>

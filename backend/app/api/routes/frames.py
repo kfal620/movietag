@@ -577,6 +577,20 @@ def analyze_frame(
     return {"task_id": async_result.id, "status": "queued", "frame_id": frame.id}
 
 
+@router.post("/{frame_id}/vision/run")
+def run_frame_vision_analysis(
+    frame_id: int,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("moderator", "admin")),
+) -> dict[str, Any]:
+    frame = db.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    async_result = celery_app.signature("vision.analyze_frames", args=([frame.id],)).apply_async()
+    return {"job_id": async_result.id, "frame_id": frame.id}
+
+
 class IngestRequest(BaseModel):
     movie_id: int | None = None
     storage_uri: str | None = None
