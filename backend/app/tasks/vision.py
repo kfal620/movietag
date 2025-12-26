@@ -5,7 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.celery import celery_app
+from app.services.vision import warmup_vision_models
 from app.tasks.frames import _mark_failure, detect_actor_faces, detect_scene_attributes
+
+
+@celery_app.task(name="vision.warmup_models")
+def warmup_models_task() -> dict[str, str]:
+    """Warm up vision models in a Celery worker."""
+    try:
+        warmup_vision_models()
+        return {"status": "success", "message": "Models warmed up successfully"}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @celery_app.task(name="vision.analyze_frames", bind=True)

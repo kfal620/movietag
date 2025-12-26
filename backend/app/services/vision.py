@@ -15,38 +15,81 @@ import importlib.metadata
 import importlib.util
 from typing import Any, Iterable
 import io
+import json
 
 import numpy as np
+import redis
 import requests
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-MODEL_STATUS: dict[str, dict[str, Any]] = {
-    "clip": {"last_loaded_at": None, "error": None, "device": None, "version": None},
-    "face": {"last_loaded_at": None, "error": None, "device": None, "version": None},
-}
+MODEL_STATUS_KEY = "movietag:model_status"
+
+
+def _get_redis_client():
+    """Get Redis client for storing model status."""
+    try:
+        from app.core.settings import get_settings
+        settings = get_settings()
+        broker_url = settings.celery_broker_url
+        if broker_url.startswith("redis://"):
+            return redis.from_url(broker_url)
+    except Exception:
+        pass
+    # Fallback to localhost
+    return redis.Redis(host="localhost", port=6379, db=0)
+
+
+def _get_model_status(model_id: str) -> dict[str, Any]:
+    """Get model status from Redis."""
+    client = _get_redis_client()
+    try:
+        data = client.hget(MODEL_STATUS_KEY, model_id)
+        if data:
+            return json.loads(data)
+    except Exception:
+        pass
+    return {
+        "last_loaded_at": None,
+        "error": None,
+        "device": None,
+        "version": None,
+        "model_name": None,
+    }
+
+
+def _set_model_status(model_id: str, status: dict[str, Any]) -> None:
+    """Set model status in Redis."""
+    client = _get_redis_client()
+    try:
+        client.hset(MODEL_STATUS_KEY, model_id, json.dumps(status))
+    except Exception as exc:
+        logger.warning("Failed to set model status in Redis: %s", exc)
 
 
 def _module_available(module_name: str) -> bool:
     return importlib.util.find_spec(module_name) is not None
 
 
-def _record_model_load(model_id: str, device: str | None, version: str | None) -> None:
-    MODEL_STATUS.setdefault(model_id, {})
-    MODEL_STATUS[model_id].update(
+def _record_model_load(model_id: str, device: str | None, version: str | None, model_name: str | None = None) -> None:
+    status = _get_model_status(model_id)
+    status.update(
         {
             "last_loaded_at": datetime.now(timezone.utc).isoformat(),
             "error": None,
             "device": device,
             "version": version,
+            "model_name": model_name,
         }
     )
+    _set_model_status(model_id, status)
 
 
 def _record_model_error(model_id: str, message: str) -> None:
-    MODEL_STATUS.setdefault(model_id, {})
-    MODEL_STATUS[model_id].update({"error": message})
+    status = _get_model_status(model_id)
+    status.update({"error": message})
+    _set_model_status(model_id, status)
 
 
 def _resolve_device_name() -> str:
@@ -96,7 +139,7 @@ def get_clip_components(model_name: str, pretrained: str) -> ClipComponents:
         open_clip_version = importlib.metadata.version("open_clip_torch")
     except importlib.metadata.PackageNotFoundError:
         open_clip_version = None
-    _record_model_load("clip", str(device), open_clip_version)
+    _record_model_load("clip", str(device), open_clip_version, model_name=f"{model_name} ({pretrained})")
     return ClipComponents(model=model, preprocess=preprocess, tokenizer=tokenizer, device=device)
 
 
@@ -149,7 +192,7 @@ def get_face_models(min_confidence: float) -> FaceModels:
         facenet_version = importlib.metadata.version("facenet-pytorch")
     except importlib.metadata.PackageNotFoundError:
         facenet_version = None
-    _record_model_load("face", str(device), facenet_version)
+    _record_model_load("face", str(device), facenet_version, model_name="MTCNN + InceptionResnetV1 (vggface2)")
     return FaceModels(detector=detector, embedder=embedder, device=device)
 
 
@@ -417,31 +460,29 @@ def predict_scene_attributes(
 
 
 def get_vision_model_status() -> list[dict[str, Any]]:
-    clip_loaded = get_clip_components.cache_info().currsize > 0
-    face_loaded = get_face_models.cache_info().currsize > 0
     device = _resolve_device_name()
 
     models: list[dict[str, Any]] = []
-    clip_meta = MODEL_STATUS.get("clip", {})
+    clip_meta = _get_model_status("clip")
     models.append(
         {
             "id": "clip",
-            "name": "CLIP image encoder",
+            "name": clip_meta.get("model_name") or "CLIP image encoder",
             "available": _module_available("open_clip"),
-            "loaded": clip_loaded,
+            "loaded": bool(clip_meta.get("last_loaded_at")) and not clip_meta.get("error"),
             "device": clip_meta.get("device") or device,
             "version": clip_meta.get("version"),
             "last_loaded_at": clip_meta.get("last_loaded_at"),
             "error": clip_meta.get("error"),
         }
     )
-    face_meta = MODEL_STATUS.get("face", {})
+    face_meta = _get_model_status("face")
     models.append(
         {
             "id": "face",
-            "name": "Face detection",
+            "name": face_meta.get("model_name") or "Face detection",
             "available": _module_available("facenet_pytorch"),
-            "loaded": face_loaded,
+            "loaded": bool(face_meta.get("last_loaded_at")) and not face_meta.get("error"),
             "device": face_meta.get("device") or device,
             "version": face_meta.get("version"),
             "last_loaded_at": face_meta.get("last_loaded_at"),

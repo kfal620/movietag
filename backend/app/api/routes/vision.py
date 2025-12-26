@@ -11,7 +11,8 @@ from app.core.auth import require_role
 from app.core.celery import celery_app
 from app.db import get_db
 from app.models import ActorDetection, Frame, FrameTag, SceneAttribute, Tag
-from app.services.vision import get_vision_model_status, warmup_vision_models
+from app.services.vision import get_vision_model_status
+from app.tasks.vision import warmup_models_task
 
 router_models = APIRouter(prefix="/models/vision", tags=["vision-models"])
 router_vision = APIRouter(prefix="/vision", tags=["vision"])
@@ -23,9 +24,9 @@ def vision_model_status() -> dict[str, Any]:
 
 
 @router_models.post("/warmup")
-def warmup_models(_: object = Depends(require_role("moderator", "admin"))) -> dict[str, bool]:
-    warmup_vision_models()
-    return {"ok": True}
+def warmup_models(_: object = Depends(require_role("moderator", "admin"))) -> dict[str, str]:
+    task = warmup_models_task.delay()
+    return {"task_id": task.id, "status": "queued"}
 
 
 class VisionRunFilters(BaseModel):
