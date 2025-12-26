@@ -49,7 +49,6 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
         ) : null}
         <div className="card__overlay">
           <span>{frame.movieTitle}</span>
-          <small className="card__meta">{frame.shotTimestamp || frame.predictedTimestamp || "Unknown time"}</small>
         </div>
       </div>
       <div className="card__meta">
