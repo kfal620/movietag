@@ -10,6 +10,7 @@ from .frames import (
     tag_frame,
 )
 from .tmdb import ingest_movie_from_tmdb
+from .vision import analyze_frames
 
 __all__ = [
     "import_frame",
@@ -20,4 +21,5 @@ __all__ = [
     "detect_actor_faces",
     "ingest_and_tag_frame",
     "ingest_movie_from_tmdb",
+    "analyze_frames",
 ]
