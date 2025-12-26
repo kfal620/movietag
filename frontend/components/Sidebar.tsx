@@ -63,6 +63,20 @@ const navItems: SidebarItem[] = [
     ),
   },
   {
+    key: "storage",
+    label: "Storage",
+    description: "Bucket explorer",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M4 7.5a1 1 0 0 1 .64-.93l6-2.25a4 4 0 0 1 2.72 0l6 2.25A1 1 0 0 1 20 7.5v8.8a2 2 0 0 1-1.3 1.87l-5.4 2.03a4 4 0 0 1-2.8 0l-5.4-2.03A2 2 0 0 1 4 16.3V7.5Zm2 .69v8.1l5 1.87a2 2 0 0 0 1.4 0l5-1.87v-8.1l-4.7-1.76a2 2 0 0 0-1.4 0L6 8.19Z"
+          fill="currentColor"
+          opacity="0.9"
+        />
+      </svg>
+    ),
+  },
+  {
     key: "settings",
     label: "Settings",
     description: "Admin & configs",
