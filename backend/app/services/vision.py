@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import lru_cache
+import importlib.metadata
+import importlib.util
 from typing import Any, Iterable
 import io
 
@@ -18,6 +21,43 @@ import requests
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+MODEL_STATUS: dict[str, dict[str, Any]] = {
+    "clip": {"last_loaded_at": None, "error": None, "device": None, "version": None},
+    "face": {"last_loaded_at": None, "error": None, "device": None, "version": None},
+}
+
+
+def _module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _record_model_load(model_id: str, device: str | None, version: str | None) -> None:
+    MODEL_STATUS.setdefault(model_id, {})
+    MODEL_STATUS[model_id].update(
+        {
+            "last_loaded_at": datetime.now(timezone.utc).isoformat(),
+            "error": None,
+            "device": device,
+            "version": version,
+        }
+    )
+
+
+def _record_model_error(model_id: str, message: str) -> None:
+    MODEL_STATUS.setdefault(model_id, {})
+    MODEL_STATUS[model_id].update({"error": message})
+
+
+def _resolve_device_name() -> str:
+    if not _module_available("torch"):
+        return "cpu"
+    torch = _lazy_import_torch()
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 def _lazy_import_torch():
@@ -52,6 +92,11 @@ def get_clip_components(model_name: str, pretrained: str) -> ClipComponents:
     model.eval()
     tokenizer = open_clip.get_tokenizer(model_name)
     logger.info("Loaded CLIP model %s (%s) on %s", model_name, pretrained, device)
+    try:
+        open_clip_version = importlib.metadata.version("open_clip_torch")
+    except importlib.metadata.PackageNotFoundError:
+        open_clip_version = None
+    _record_model_load("clip", str(device), open_clip_version)
     return ClipComponents(model=model, preprocess=preprocess, tokenizer=tokenizer, device=device)
 
 
@@ -100,6 +145,11 @@ def get_face_models(min_confidence: float) -> FaceModels:
     )
     embedder = InceptionResnetV1(pretrained="vggface2").eval().to(device)
     logger.info("Loaded face models on %s (threshold=%s)", device, min_confidence)
+    try:
+        facenet_version = importlib.metadata.version("facenet-pytorch")
+    except importlib.metadata.PackageNotFoundError:
+        facenet_version = None
+    _record_model_load("face", str(device), facenet_version)
     return FaceModels(detector=detector, embedder=embedder, device=device)
 
 
@@ -364,3 +414,65 @@ def predict_scene_attributes(
     ]
     predictions.extend(_dominant_colors(image, k=3))
     return predictions
+
+
+def get_vision_model_status() -> list[dict[str, Any]]:
+    clip_loaded = get_clip_components.cache_info().currsize > 0
+    face_loaded = get_face_models.cache_info().currsize > 0
+    device = _resolve_device_name()
+
+    models: list[dict[str, Any]] = []
+    clip_meta = MODEL_STATUS.get("clip", {})
+    models.append(
+        {
+            "id": "clip",
+            "name": "CLIP image encoder",
+            "available": _module_available("open_clip"),
+            "loaded": clip_loaded,
+            "device": clip_meta.get("device") or device,
+            "version": clip_meta.get("version"),
+            "last_loaded_at": clip_meta.get("last_loaded_at"),
+            "error": clip_meta.get("error"),
+        }
+    )
+    face_meta = MODEL_STATUS.get("face", {})
+    models.append(
+        {
+            "id": "face",
+            "name": "Face detection",
+            "available": _module_available("facenet_pytorch"),
+            "loaded": face_loaded,
+            "device": face_meta.get("device") or device,
+            "version": face_meta.get("version"),
+            "last_loaded_at": face_meta.get("last_loaded_at"),
+            "error": face_meta.get("error"),
+        }
+    )
+    return models
+
+
+def warmup_vision_models() -> None:
+    """Trigger light-weight model loading to populate cache entries."""
+    settings = None
+    try:
+        from app.core.settings import get_settings  # local import to avoid cycles
+
+        settings = get_settings()
+    except Exception:
+        settings = None
+
+    try:
+        if settings:
+            get_clip_components(settings.clip_model_name, settings.clip_pretrained)
+        else:
+            get_clip_components("ViT-B-32", "openai")
+    except Exception as exc:
+        logger.exception("CLIP warmup failed")
+        _record_model_error("clip", str(exc))
+
+    try:
+        min_confidence = settings.face_min_confidence if settings else 0.9
+        get_face_models(min_confidence)
+    except Exception as exc:
+        logger.exception("Face model warmup failed")
+        _record_model_error("face", str(exc))

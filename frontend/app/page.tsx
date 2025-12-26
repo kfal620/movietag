@@ -11,6 +11,7 @@ import { ExportPanel } from "../components/ExportPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StorageExplorer } from "../components/StorageExplorer";
 import { Sidebar } from "../components/Sidebar";
+import { VisionModelsPanel } from "../components/VisionModelsPanel";
 
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
@@ -88,6 +89,15 @@ export default function Home() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState("frames");
+  const [analysisScope, setAnalysisScope] = useState<"selected" | "filtered">("selected");
+  const [analysisJob, setAnalysisJob] = useState<{
+    id: string;
+    status: string;
+    processed?: number | null;
+    total?: number | null;
+    error?: string | null;
+  } | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -372,6 +382,100 @@ export default function Home() {
     setStorageMessage("Saved frame changes.");
   };
 
+  const triggerVisionAnalysis = async () => {
+    if (!authToken) {
+      setAnalysisMessage("Provide a moderator or admin token to run analysis.");
+      return;
+    }
+    setAnalysisMessage(null);
+    try {
+      if (analysisScope === "selected") {
+        if (!selectedFrameId) {
+          setAnalysisMessage("Select a frame to analyze.");
+          return;
+        }
+        const response = await fetch(`/api/frames/${selectedFrameId}/vision/run`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const payload = await response.json();
+        setAnalysisJob({ id: payload.job_id, status: "queued", processed: 0, total: 1 });
+        setAnalysisMessage(`Queued analysis for frame #${selectedFrameId}.`);
+        return;
+      }
+
+      const tagList = tagFilter
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      const payload = {
+        filters: {
+          movie_id: movieFilter ? Number(movieFilter) : null,
+          status: statusFilter !== "all" ? statusFilter : null,
+          cast_member_id: actorFilter ? Number(actorFilter) : null,
+          time_of_day: timeOfDayFilter || null,
+          tag: tagList.length ? tagList : null,
+        },
+        limit: 2000,
+      };
+      const response = await fetch("/api/vision/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const result = await response.json();
+      setAnalysisJob({ id: result.job_id, status: "queued", processed: 0, total: result.count ?? null });
+      setAnalysisMessage(`Queued analysis for ${result.count ?? "matching"} frames.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to start analysis.";
+      setAnalysisMessage(message);
+    }
+  };
+
+  useEffect(() => {
+    if (!analysisJob || ["done", "failed"].includes(analysisJob.status)) {
+      return;
+    }
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/tasks/${analysisJob.id}`);
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const payload = await response.json();
+        setAnalysisJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: payload.status ?? prev.status,
+                processed: payload.processed ?? prev.processed,
+                total: payload.total ?? prev.total,
+                error: payload.error ?? null,
+              }
+            : prev,
+        );
+        if (payload.status === "done") {
+          await mutate();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to fetch job status.";
+        setAnalysisJob((prev) => (prev ? { ...prev, error: message } : prev));
+      }
+    };
+    void poll();
+    const interval = window.setInterval(poll, 4000);
+    return () => window.clearInterval(interval);
+  }, [analysisJob?.id, analysisJob?.status, mutate]);
+
   const filtersSummary = useMemo(() => {
     const parts: string[] = [];
     if (movieFilter) parts.push(`Movie ${movieFilter}`);
@@ -458,10 +562,69 @@ export default function Home() {
                 {selectedFrame.metadataSource ? <span className="pill">Source: {selectedFrame.metadataSource}</span> : null}
               </>
             ) : null}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 8 }}>
+              <label className="label" style={{ margin: 0 }}>
+                Vision scope
+              </label>
+              <select
+                className="select"
+                value={analysisScope}
+                onChange={(event) => setAnalysisScope(event.target.value as "selected" | "filtered")}
+                style={{ minWidth: 200 }}
+              >
+                <option value="selected">Selected frame</option>
+                <option value="filtered">All frames matching filters</option>
+              </select>
+              <button className="button button--primary" type="button" onClick={triggerVisionAnalysis}>
+                Run vision analysis
+              </button>
+            </div>
           </div>
         </Toolbar>
 
         <div className="page__content">
+          {analysisJob ? (
+            <section className="panel" aria-label="Vision analysis status" style={{ padding: "1rem 1.25rem" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <strong>Vision analysis job</strong>
+                  <div className="muted" style={{ marginTop: 4 }}>
+                    Status: {analysisJob.status}
+                    {analysisJob.processed !== null && analysisJob.processed !== undefined ? (
+                      <>
+                        {" "}· {analysisJob.processed}
+                        {analysisJob.total ? ` / ${analysisJob.total}` : ""} frames
+                      </>
+                    ) : null}
+                  </div>
+                  {analysisJob.error ? <div style={{ color: "var(--danger)" }}>{analysisJob.error}</div> : null}
+                  {analysisMessage ? <div className="muted">{analysisMessage}</div> : null}
+                </div>
+                <span className={`chip ${analysisJob.status === "done" ? "chip--success" : "chip--muted"}`}>
+                  {analysisJob.status}
+                </span>
+              </div>
+              {analysisJob.total ? (
+                <div style={{ marginTop: 12 }}>
+                  <div className="progress-track">
+                    <div
+                      className="progress-bar"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round(((analysisJob.processed ?? 0) / analysisJob.total) * 100),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : analysisMessage ? (
+            <section className="panel" aria-label="Vision analysis message" style={{ padding: "1rem 1.25rem" }}>
+              <p className="muted">{analysisMessage}</p>
+            </section>
+          ) : null}
           {selectedView === "frames" ? (
             <div className="content-grid">
               <div className="content-grid__main">
@@ -568,6 +731,7 @@ export default function Home() {
                   </div>
                 </section>
                 <SettingsPanel className="settings-card--full" />
+                <VisionModelsPanel authToken={authToken} />
               </div>
             </div>
           ) : null}
