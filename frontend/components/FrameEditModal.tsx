@@ -31,6 +31,8 @@ export function FrameEditModal({
 
   // -- Core Metadata State --
   const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
+  const [analyzing, setAnalyzing] = useState(false);
+  const [coreMessage, setCoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // -- Override/Tags State --
   const [overrideTitle, setOverrideTitle] = useState("");
@@ -70,6 +72,7 @@ export function FrameEditModal({
         matchConfidence: frame.matchConfidence ?? undefined,
         capturedAt: frame.capturedAt ?? undefined,
       });
+      setCoreMessage(null);
 
       // Tags/Override (reset state)
       setOverrideTitle("");
@@ -103,6 +106,26 @@ export function FrameEditModal({
   // -- Core Handlers --
   const updateMetadata = (key: keyof Frame, value: string) => {
     setDraftMetadata((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const runVisionAnalysis = async () => {
+    if (!frame || !authToken) return;
+    setAnalyzing(true);
+    setCoreMessage(null);
+    try {
+      const response = await fetch(`/api/frames/${frame.id}/vision/run`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to start analysis");
+      }
+      setCoreMessage({ type: "success", text: "Vision analysis queued." });
+    } catch (error) {
+      setCoreMessage({ type: "error", text: "Analysis failed to start." });
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   // -- Scene Handlers --
@@ -343,6 +366,22 @@ export function FrameEditModal({
                     onChange={(event) => setDraftMetadata((prev) => ({ ...prev, matchConfidence: event.target.value ? Number(event.target.value) : null }))}
                     placeholder="0.95"
                   />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={runVisionAnalysis}
+                    disabled={analyzing}
+                  >
+                    {analyzing ? "Queuing..." : "Run Vision Analysis"}
+                  </button>
+                  {coreMessage && (
+                    <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: coreMessage.type === "success" ? "var(--success)" : "var(--danger)" }}>
+                      {coreMessage.text}
+                    </p>
+                  )}
                 </div>
               </div>
 
