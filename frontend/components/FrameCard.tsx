@@ -11,15 +11,11 @@ type Props = {
 };
 
 const statusBadge = {
-  pending: { label: "Pending", className: "badge" },
-  new: { label: "New", className: "badge badge--warning" },
-  needs_review: { label: "Needs review", className: "badge badge--danger" },
+  needs_analyzing: { label: "Needs Analyzing", className: "badge badge--warning" },
+  analyzed: { label: "Analyzed", className: "badge badge--success" },
+  tmdb_only: { label: "TMDB Only", className: "badge" },
   confirmed: { label: "Confirmed", className: "badge badge--success" },
-  overridden: { label: "Overridden", className: "badge" },
-  tagged: { label: "Tagged", className: "badge badge--success" },
-  embedded: { label: "Embedded", className: "badge" },
-  scene_annotated: { label: "Scene ready", className: "badge" },
-  actors_detected: { label: "Actors detected", className: "badge badge--success" },
+  pending: { label: "Pending", className: "badge" },
 } as const;
 
 export function FrameCard({ frame, isActive, onSelect, selectedForExport, onToggleSelect, onEdit }: Props) {
@@ -82,13 +78,11 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
         <span>{frame.metadataSource || frame.ingestSource || "Unspecified source"}</span>
         <div className="status-row">
           <div
-            className={`status-dot ${frame.status === "confirmed"
+            className={`status-dot ${frame.status === "confirmed" || frame.status === "analyzed"
                 ? "status-dot--success"
-                : frame.status === "needs_review"
+                : frame.status === "needs_analyzing"
                   ? "status-dot--danger"
-                  : frame.status === "overridden"
-                    ? "status-dot--warning"
-                    : ""
+                  : "status-dot--warning"
               }`}
           />
           {frame.tags?.length ? (
