@@ -12,7 +12,7 @@ def test_tmdb_client_fetches_movie_details(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:  # type: ignore[override]
         requested_paths.append(str(request.url))
-        assert request.headers.get("Authorization") == "Bearer test-key"
+        assert "api_key=test-key" in str(request.url)
         return httpx.Response(200, json={"id": 123, "title": "Example"})
 
     transport = httpx.MockTransport(handler)
@@ -26,7 +26,7 @@ def test_tmdb_client_fetches_movie_details(monkeypatch):
     result = client.movie_details(123)
 
     assert result["id"] == 123
-    assert any(path.endswith("/movie/123") for path in requested_paths)
+    assert any("/movie/123" in path for path in requested_paths)
 
 
 def test_tmdb_ingestor_persists_movie_cast_and_artwork(monkeypatch):

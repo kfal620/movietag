@@ -22,21 +22,14 @@ class TMDBClient:
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()
-        auth_header = (
-            {"Authorization": f"Bearer {settings.tmdb_api_key}"}
-            if settings.tmdb_api_key
-            else {}
-        )
+        self._api_key = settings.tmdb_api_key
 
         if client is None:
             self._client = httpx.Client(
                 base_url=settings.tmdb_base_url,
-                headers=auth_header or None,
                 timeout=10.0,
             )
         else:
-            if auth_header and "Authorization" not in client.headers:
-                client.headers.update(auth_header)
             self._client = client
 
     def movie_details(
@@ -46,18 +39,16 @@ class TMDBClient:
         append_to_response: list[str] | None = None,
     ) -> dict[str, Any]:
         """Fetch metadata for a movie by its TMDb identifier."""
-        params = (
-            {"append_to_response": ",".join(append_to_response)}
-            if append_to_response
-            else None
-        )
+        params = {"api_key": self._api_key} if self._api_key else {}
+        if append_to_response:
+            params["append_to_response"] = ",".join(append_to_response)
         response = self._client.get(f"/movie/{tmdb_id}", params=params)
         response.raise_for_status()
         return response.json()
 
     def search_movies(self, query: str, *, year: int | None = None) -> dict[str, Any]:
         """Search TMDb for movies by title (and optional release year)."""
-        params: dict[str, Any] = {"query": query}
+        params: dict[str, Any] = {"api_key": self._api_key, "query": query} if self._api_key else {"query": query}
         if year is not None:
             params["year"] = year
         response = self._client.get("/search/movie", params=params)
