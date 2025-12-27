@@ -309,6 +309,8 @@ def assign_frame_tmdb(
     if frame is None:
         raise HTTPException(status_code=404, detail="Frame not found")
 
+    db.refresh(frame)
+
     ingestor = TMDBIngestor()
     try:
         ingest_result = ingestor.ingest_movie(payload.tmdb_id)
@@ -324,12 +326,13 @@ def assign_frame_tmdb(
     if movie is None:
         raise HTTPException(status_code=404, detail="Movie not found after ingest")
 
+    if frame.scene_summary is None and movie.description:
+        frame.scene_summary = movie.description
+
     frame.movie_id = movie.id
     frame.match_confidence = 1.0
     frame.status = "confirmed"
     frame.metadata_source = ingest_result.get("provider") or "tmdb"
-    if frame.scene_summary is None and movie.description:
-        frame.scene_summary = movie.description
 
     db.add(frame)
     db.commit()
