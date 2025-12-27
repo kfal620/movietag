@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -16,8 +17,9 @@ import uuid
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.auth import require_role
+from app.core.auth import AuthenticatedUser, require_role
 from app.core.settings import get_settings
+from app.db import SessionLocal
 from app.core.celery import celery_app
 from app.db import get_db
 from app.integrations.tmdb import TMDBIngestor
@@ -299,45 +301,53 @@ class TMDBAssignmentRequest(BaseModel):
 
 
 @router.post("/{frame_id}/assign-tmdb")
-def assign_frame_tmdb(
+async def assign_frame_tmdb(
     frame_id: int,
     payload: TMDBAssignmentRequest,
-    db: Session = Depends(get_db),
-    _: object = Depends(require_role("moderator", "admin")),
+    user: AuthenticatedUser = Depends(require_role("moderator", "admin")),
 ) -> dict[str, Any]:
-    frame = db.get(Frame, frame_id)
-    if frame is None:
-        raise HTTPException(status_code=404, detail="Frame not found")
+    result = await asyncio.to_thread(sync_assign_frame_tmdb, frame_id, payload)
+    return result
 
-    frame = db.merge(frame)
 
-    ingestor = TMDBIngestor()
+def sync_assign_frame_tmdb(frame_id: int, payload: TMDBAssignmentRequest) -> dict[str, Any]:
+    db = SessionLocal()
     try:
-        ingest_result = ingestor.ingest_movie(payload.tmdb_id)
-    except Exception as exc:
-        logger.exception("TMDb ingest failed for frame %s", frame_id)
-        raise HTTPException(status_code=502, detail=f"TMDb ingest failed: {exc}") from exc
+        frame = db.get(Frame, frame_id)
+        if frame is None:
+            raise HTTPException(status_code=404, detail="Frame not found")
 
-    movie_id = ingest_result.get("movie_id")
-    if movie_id is None:
-        raise HTTPException(status_code=502, detail="TMDb ingest did not yield a movie id")
+        frame = db.merge(frame)
 
-    movie = db.get(Movie, movie_id)
-    if movie is None:
-        raise HTTPException(status_code=404, detail="Movie not found after ingest")
+        ingestor = TMDBIngestor()
+        try:
+            ingest_result = ingestor.ingest_movie(payload.tmdb_id)
+        except Exception as exc:
+            logger.exception("TMDb ingest failed for frame %s", frame_id)
+            raise HTTPException(status_code=502, detail=f"TMDb ingest failed: {exc}") from exc
 
-    if frame.scene_summary is None and movie.description:
-        frame.scene_summary = movie.description
+        movie_id = ingest_result.get("movie_id")
+        if movie_id is None:
+            raise HTTPException(status_code=502, detail="TMDb ingest did not yield a movie id")
 
-    frame.movie_id = movie.id
-    frame.match_confidence = 1.0
-    frame.status = "confirmed"
-    frame.metadata_source = ingest_result.get("provider") or "tmdb"
+        movie = db.get(Movie, movie_id)
+        if movie is None:
+            raise HTTPException(status_code=404, detail="Movie not found after ingest")
 
-    db.add(frame)
-    db.commit()
-    db.refresh(frame)
-    return _serialize_frame(frame)
+        if frame.scene_summary is None and movie.description:
+            frame.scene_summary = movie.description
+
+        frame.movie_id = movie.id
+        frame.match_confidence = 1.0
+        frame.status = "confirmed"
+        frame.metadata_source = ingest_result.get("provider") or "tmdb"
+
+        db.add(frame)
+        db.commit()
+        db.refresh(frame)
+        return _serialize_frame(frame)
+    finally:
+        db.close()
 
 
 @router.get("")
