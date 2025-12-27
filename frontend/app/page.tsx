@@ -23,6 +23,28 @@ const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
   { label: "Confirmed", value: "confirmed" },
 ];
 
+type TaskStatus = "queued" | "running" | "done" | "failed";
+
+type TaskRecord = {
+  id: string;
+  label: string;
+  status: TaskStatus;
+  createdAt: string;
+  updatedAt?: string;
+  processed?: number | null;
+  total?: number | null;
+  error?: string | null;
+  source?: string;
+};
+
+const taskStatusFilters: { label: string; value: TaskStatus | "all" }[] = [
+  { label: "All", value: "all" },
+  { label: "Queued", value: "queued" },
+  { label: "In progress", value: "running" },
+  { label: "Completed", value: "done" },
+  { label: "Failed", value: "failed" },
+];
+
 type FrameApiItem = {
   id: number;
   movie_id: number | null;
@@ -99,6 +121,11 @@ export default function Home() {
   } | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [editModalFrameId, setEditModalFrameId] = useState<number | null>(null);
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [taskFilter, setTaskFilter] = useState<TaskStatus | "all">("all");
+  const [taskIdInput, setTaskIdInput] = useState("");
+  const [taskLabelInput, setTaskLabelInput] = useState("");
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -121,6 +148,26 @@ export default function Home() {
       setAuthToken(storedToken);
     }
   }, []);
+
+  useEffect(() => {
+    const storedTasks = window.localStorage.getItem("movietagTasks");
+    if (storedTasks) {
+      try {
+        const parsed = JSON.parse(storedTasks) as TaskRecord[];
+        if (Array.isArray(parsed)) {
+          setTasks(
+            parsed.filter((task) => task && typeof task.id === "string" && typeof task.status === "string"),
+          );
+        }
+      } catch {
+        window.localStorage.removeItem("movietagTasks");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("movietagTasks", JSON.stringify(tasks));
+  }, [tasks]);
 
   const { data, mutate } = useSWR<FramesApiResponse>(
     [framesUrl, authToken],
@@ -202,6 +249,70 @@ export default function Home() {
 
   const selectedFrame = frames.find((frame) => frame.id === selectedFrameId);
   const selectedForExport = frames.filter((frame) => exportSelection.has(frame.id));
+
+  const upsertTask = (task: TaskRecord) => {
+    setTasks((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === task.id);
+      if (existingIndex === -1) {
+        return [task, ...prev];
+      }
+      const next = [...prev];
+      next[existingIndex] = { ...next[existingIndex], ...task };
+      return next;
+    });
+  };
+
+  const updateTask = (taskId: string, updates: Partial<TaskRecord>) => {
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? { ...task, ...updates, updatedAt: new Date().toISOString() }
+          : task,
+      ),
+    );
+  };
+
+  const fetchTaskStatus = async (taskId: string) => {
+    const response = await fetch(`/api/tasks/${taskId}`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json() as Promise<{
+      status: TaskStatus;
+      processed?: number | null;
+      total?: number | null;
+      error?: string | null;
+    }>;
+  };
+
+  const applyTaskPayload = (taskId: string, payload: { status: TaskStatus; processed?: number | null; total?: number | null; error?: string | null }) => {
+    updateTask(taskId, {
+      status: payload.status,
+      processed: payload.processed ?? null,
+      total: payload.total ?? null,
+      error: payload.error ?? null,
+    });
+  };
+
+  const refreshTasks = async (taskIds?: string[]) => {
+    const list = taskIds?.length ? tasks.filter((task) => taskIds.includes(task.id)) : tasks;
+    if (!list.length) {
+      setTaskMessage("No tasks to refresh yet.");
+      return;
+    }
+    setTaskMessage(null);
+    try {
+      await Promise.all(
+        list.map(async (task) => {
+          const payload = await fetchTaskStatus(task.id);
+          applyTaskPayload(task.id, payload);
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to refresh tasks.";
+      setTaskMessage(message);
+    }
+  };
 
   const applyOverride = (frameId: number, prediction: Prediction | string) => {
     const payload =
@@ -406,6 +517,15 @@ export default function Home() {
         }
         const payload = await response.json();
         setAnalysisJob({ id: payload.job_id, status: "queued", processed: 0, total: 1 });
+        upsertTask({
+          id: payload.job_id,
+          label: `Vision analysis for frame #${selectedFrameId}`,
+          status: "queued",
+          processed: 0,
+          total: 1,
+          createdAt: new Date().toISOString(),
+          source: "vision",
+        });
         setAnalysisMessage(`Queued analysis for frame #${selectedFrameId}.`);
         return;
       }
@@ -437,6 +557,15 @@ export default function Home() {
       }
       const result = await response.json();
       setAnalysisJob({ id: result.job_id, status: "queued", processed: 0, total: result.count ?? null });
+      upsertTask({
+        id: result.job_id,
+        label: `Vision analysis for ${filtersSummary}`,
+        status: "queued",
+        processed: 0,
+        total: result.count ?? null,
+        createdAt: new Date().toISOString(),
+        source: "vision",
+      });
       setAnalysisMessage(`Queued analysis for ${result.count ?? "matching"} frames.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start analysis.";
@@ -466,6 +595,12 @@ export default function Home() {
             }
             : prev,
         );
+        applyTaskPayload(analysisJob.id, {
+          status: payload.status ?? analysisJob.status,
+          processed: payload.processed ?? analysisJob.processed ?? null,
+          total: payload.total ?? analysisJob.total ?? null,
+          error: payload.error ?? null,
+        });
         if (payload.status === "done") {
           await mutate();
         }
@@ -489,6 +624,72 @@ export default function Home() {
     return parts.length ? parts.join(" · ") : "All frames";
   }, [actorFilter, movieFilter, statusFilter, tagFilter, timeOfDayFilter]);
 
+  const taskStats = useMemo(() => {
+    return tasks.reduce(
+      (acc, task) => {
+        acc[task.status] += 1;
+        return acc;
+      },
+      { queued: 0, running: 0, done: 0, failed: 0 } as Record<TaskStatus, number>,
+    );
+  }, [tasks]);
+
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      const aTime = new Date(a.updatedAt ?? a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt ?? b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    if (taskFilter === "all") {
+      return sortedTasks;
+    }
+    return sortedTasks.filter((task) => task.status === taskFilter);
+  }, [sortedTasks, taskFilter]);
+
+  const formatTimestamp = (value?: string) => (value ? new Date(value).toLocaleString() : "—");
+
+  const handleTrackTask = async () => {
+    const taskId = taskIdInput.trim();
+    if (!taskId) {
+      setTaskMessage("Enter a task id to track.");
+      return;
+    }
+    const label = taskLabelInput.trim() || "Tracked task";
+    const createdAt = new Date().toISOString();
+    upsertTask({
+      id: taskId,
+      label,
+      status: "queued",
+      createdAt,
+      source: "manual",
+    });
+    setTaskIdInput("");
+    setTaskLabelInput("");
+    setTaskMessage(null);
+
+    try {
+      const payload = await fetchTaskStatus(taskId);
+      applyTaskPayload(taskId, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch task status.";
+      updateTask(taskId, { error: message });
+      setTaskMessage(message);
+    }
+  };
+
+  const removeTask = (taskId: string) => {
+    setTasks((prev) => prev.filter((task) => task.id !== taskId));
+  };
+
+  const clearCompletedTasks = () => {
+    setTasks((prev) => prev.filter((task) => !["done", "failed"].includes(task.status)));
+  };
+
+  const taskSummary = `${taskStats.queued} queued · ${taskStats.running} running · ${taskStats.done} done · ${taskStats.failed} failed`;
+
   const renderPlaceholder = (title: string, description: string) => (
     <section className="panel placeholder-panel" aria-label={`${title} view`}>
       <div className="placeholder-panel__content">
@@ -507,82 +708,97 @@ export default function Home() {
     <main className="page" data-testid="app-shell">
       <Sidebar selectedView={selectedView} onSelect={setSelectedView} />
       <div className="page__main">
-        <Toolbar total={data?.total ?? frames.length} showing={frames.length} filtersSummary={filtersSummary} onRefresh={refreshFeed}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <label className="label" style={{ margin: 0 }}>
-              Status
-            </label>
-            <select
-              className="select"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as Frame["status"] | "all")}
-            >
-              {statusFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>
-            <input
-              className="input"
-              placeholder="Movie ID"
-              value={movieFilter}
-              onChange={(event) => setMovieFilter(event.target.value)}
-              style={{ minWidth: 120 }}
-            />
-            <input
-              className="input"
-              placeholder="Tags (comma-separated)"
-              value={tagFilter}
-              onChange={(event) => setTagFilter(event.target.value)}
-              style={{ minWidth: 180 }}
-            />
-            <input
-              className="input"
-              placeholder="Actor ID"
-              value={actorFilter}
-              onChange={(event) => setActorFilter(event.target.value)}
-              style={{ minWidth: 120 }}
-            />
-            <input
-              className="input"
-              placeholder="Time of day"
-              value={timeOfDayFilter}
-              onChange={(event) => setTimeOfDayFilter(event.target.value)}
-              style={{ minWidth: 160 }}
-            />
-            {selectedFrame ? (
-              <>
-                <span className="pill">
-                  Confidence:{" "}
-                  {selectedFrame.matchConfidence !== undefined && selectedFrame.matchConfidence !== null
-                    ? `${(selectedFrame.matchConfidence * 100).toFixed(1)}%`
-                    : "—"}
-                </span>
-                <span className="pill">
-                  Time: {selectedFrame.shotTimestamp || selectedFrame.predictedTimestamp || "Unknown"}
-                </span>
-                {selectedFrame.metadataSource ? <span className="pill">Source: {selectedFrame.metadataSource}</span> : null}
-              </>
-            ) : null}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 8 }}>
+        <Toolbar
+          title={selectedView === "tasks" ? "Worker Tasks" : "Framegrab Tagger"}
+          subtitle={
+            selectedView === "tasks"
+              ? "Track queued, in-progress, and completed worker activity."
+              : "Browse frames, audit predictions, and curate overrides."
+          }
+          summary={selectedView === "tasks" ? <div className="muted">{taskSummary}</div> : undefined}
+          total={selectedView === "frames" ? data?.total ?? frames.length : undefined}
+          showing={selectedView === "frames" ? frames.length : undefined}
+          filtersSummary={selectedView === "frames" ? filtersSummary : undefined}
+          onRefresh={selectedView === "frames" ? refreshFeed : selectedView === "tasks" ? () => refreshTasks() : undefined}
+          refreshLabel={selectedView === "tasks" ? "Refresh tasks" : "Refresh feed"}
+        >
+          {selectedView === "frames" ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <label className="label" style={{ margin: 0 }}>
-                Vision scope
+                Status
               </label>
               <select
                 className="select"
-                value={analysisScope}
-                onChange={(event) => setAnalysisScope(event.target.value as "selected" | "filtered")}
-                style={{ minWidth: 200 }}
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as Frame["status"] | "all")}
               >
-                <option value="selected">Selected frame</option>
-                <option value="filtered">All frames matching filters</option>
+                {statusFilters.map((filter) => (
+                  <option key={filter.value} value={filter.value}>
+                    {filter.label}
+                  </option>
+                ))}
               </select>
-              <button className="button button--primary" type="button" onClick={triggerVisionAnalysis}>
-                Run vision analysis
-              </button>
+              <input
+                className="input"
+                placeholder="Movie ID"
+                value={movieFilter}
+                onChange={(event) => setMovieFilter(event.target.value)}
+                style={{ minWidth: 120 }}
+              />
+              <input
+                className="input"
+                placeholder="Tags (comma-separated)"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                style={{ minWidth: 180 }}
+              />
+              <input
+                className="input"
+                placeholder="Actor ID"
+                value={actorFilter}
+                onChange={(event) => setActorFilter(event.target.value)}
+                style={{ minWidth: 120 }}
+              />
+              <input
+                className="input"
+                placeholder="Time of day"
+                value={timeOfDayFilter}
+                onChange={(event) => setTimeOfDayFilter(event.target.value)}
+                style={{ minWidth: 160 }}
+              />
+              {selectedFrame ? (
+                <>
+                  <span className="pill">
+                    Confidence:{" "}
+                    {selectedFrame.matchConfidence !== undefined && selectedFrame.matchConfidence !== null
+                      ? `${(selectedFrame.matchConfidence * 100).toFixed(1)}%`
+                      : "—"}
+                  </span>
+                  <span className="pill">
+                    Time: {selectedFrame.shotTimestamp || selectedFrame.predictedTimestamp || "Unknown"}
+                  </span>
+                  {selectedFrame.metadataSource ? <span className="pill">Source: {selectedFrame.metadataSource}</span> : null}
+                </>
+              ) : null}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 8 }}>
+                <label className="label" style={{ margin: 0 }}>
+                  Vision scope
+                </label>
+                <select
+                  className="select"
+                  value={analysisScope}
+                  onChange={(event) => setAnalysisScope(event.target.value as "selected" | "filtered")}
+                  style={{ minWidth: 200 }}
+                >
+                  <option value="selected">Selected frame</option>
+                  <option value="filtered">All frames matching filters</option>
+                </select>
+                <button className="button button--primary" type="button" onClick={triggerVisionAnalysis}>
+                  Run vision analysis
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </Toolbar>
 
         <div className="page__content">
@@ -669,7 +885,172 @@ export default function Home() {
             </div>
           ) : null}
           {selectedView === "dashboard" ? renderPlaceholder("Dashboard", "Monitor tagging throughput, queues, and automated signals in one view.") : null}
-          {selectedView === "tasks" ? renderPlaceholder("Tasks", "Track review assignments, approvals, and ownership across teams.") : null}
+          {selectedView === "tasks" ? (
+            <div className="tasks-layout">
+              <div className="tasks-summary">
+                <div className="panel task-summary-card">
+                  <p className="eyebrow">Queued</p>
+                  <h3>{taskStats.queued}</h3>
+                  <p className="muted">Awaiting worker pickup</p>
+                </div>
+                <div className="panel task-summary-card">
+                  <p className="eyebrow">In progress</p>
+                  <h3>{taskStats.running}</h3>
+                  <p className="muted">Currently running</p>
+                </div>
+                <div className="panel task-summary-card">
+                  <p className="eyebrow">Completed</p>
+                  <h3>{taskStats.done}</h3>
+                  <p className="muted">Successfully finished</p>
+                </div>
+                <div className="panel task-summary-card">
+                  <p className="eyebrow">Failed</p>
+                  <h3>{taskStats.failed}</h3>
+                  <p className="muted">Needs follow-up</p>
+                </div>
+              </div>
+              <section className="panel tasks-panel" aria-label="Worker task center">
+                <div className="tasks-panel__header">
+                  <div>
+                    <p className="eyebrow">Task center</p>
+                    <h2>Worker queue</h2>
+                    <p className="muted" style={{ maxWidth: 640 }}>
+                      Track Celery-backed jobs across vision analysis and ingestion workflows. Add an existing task
+                      id to keep tabs on background processing.
+                    </p>
+                  </div>
+                  <div className="tasks-panel__actions">
+                    <button className="button" type="button" onClick={() => refreshTasks()}>
+                      Refresh all
+                    </button>
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={clearCompletedTasks}
+                      disabled={!tasks.some((task) => ["done", "failed"].includes(task.status))}
+                    >
+                      Clear completed
+                    </button>
+                  </div>
+                </div>
+                <div className="tasks-panel__controls">
+                  <div className="tasks-panel__filters">
+                    <label className="label" style={{ margin: 0 }}>
+                      Filter by status
+                    </label>
+                    <select
+                      className="select"
+                      value={taskFilter}
+                      onChange={(event) => setTaskFilter(event.target.value as TaskStatus | "all")}
+                    >
+                      {taskStatusFilters.map((filter) => (
+                        <option key={filter.value} value={filter.value}>
+                          {filter.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="tasks-panel__track">
+                    <input
+                      className="input"
+                      placeholder="Task id"
+                      value={taskIdInput}
+                      onChange={(event) => setTaskIdInput(event.target.value)}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Label (optional)"
+                      value={taskLabelInput}
+                      onChange={(event) => setTaskLabelInput(event.target.value)}
+                    />
+                    <button className="button button--primary" type="button" onClick={handleTrackTask}>
+                      Track task
+                    </button>
+                  </div>
+                </div>
+                {taskMessage ? <p className="muted tasks-panel__message">{taskMessage}</p> : null}
+                <div className="tasks-table">
+                  <div className="tasks-table__head">
+                    <span>Task</span>
+                    <span>Status</span>
+                    <span>Progress</span>
+                    <span>Timing</span>
+                    <span>Actions</span>
+                  </div>
+                  {filteredTasks.length ? (
+                    filteredTasks.map((task) => (
+                      <div className="tasks-table__row" key={task.id}>
+                        <div className="tasks-table__cell">
+                          <div className="tasks-table__title">
+                            <strong>{task.label}</strong>
+                            {task.source ? <span className="pill">Source: {task.source}</span> : null}
+                          </div>
+                          <div className="muted">ID: {task.id}</div>
+                          {task.error ? <div className="tasks-table__error">{task.error}</div> : null}
+                        </div>
+                        <div className="tasks-table__cell">
+                          <span
+                            className={`chip ${
+                              task.status === "done"
+                                ? "chip--success"
+                                : task.status === "failed"
+                                  ? "chip--danger"
+                                  : task.status === "queued"
+                                    ? "chip--muted"
+                                    : ""
+                            }`}
+                          >
+                            {task.status}
+                          </span>
+                        </div>
+                        <div className="tasks-table__cell">
+                          {task.processed !== null && task.processed !== undefined ? (
+                            <div>
+                              <div>
+                                {task.processed}
+                                {task.total ? ` / ${task.total}` : ""}
+                              </div>
+                              {task.total ? (
+                                <div className="progress-track" style={{ marginTop: 6 }}>
+                                  <div
+                                    className="progress-bar"
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        Math.round(((task.processed ?? 0) / task.total) * 100),
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </div>
+                        <div className="tasks-table__cell">
+                          <div>{formatTimestamp(task.createdAt)}</div>
+                          <div className="muted">Updated {formatTimestamp(task.updatedAt)}</div>
+                        </div>
+                        <div className="tasks-table__cell tasks-table__actions">
+                          <button className="button" type="button" onClick={() => refreshTasks([task.id])}>
+                            Refresh
+                          </button>
+                          <button className="button" type="button" onClick={() => removeTask(task.id)}>
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="tasks-table__empty">
+                      <p className="muted">No tasks yet. Run a vision analysis or track a task id.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          ) : null}
           {selectedView === "settings" ? (
             <div className="settings-layout">
               <div className="settings-hero">
