@@ -309,7 +309,7 @@ def assign_frame_tmdb(
     if frame is None:
         raise HTTPException(status_code=404, detail="Frame not found")
 
-    db.refresh(frame)
+    frame = db.merge(frame)
 
     ingestor = TMDBIngestor()
     try:
