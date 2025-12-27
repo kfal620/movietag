@@ -62,7 +62,7 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
           </button>
         )}
         {onToggleSelect ? (
-          <label className="chip chip--muted" style={{ position: "absolute", top: 8, right: 8 }}>
+          <label className="chip chip--muted" style={{ position: "absolute", top: 35, right: 8 }}>
             <input
               type="checkbox"
               aria-label={`Toggle export selection for frame ${frame.id}`}
@@ -82,15 +82,14 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
         <span>{frame.metadataSource || frame.ingestSource || "Unspecified source"}</span>
         <div className="status-row">
           <div
-            className={`status-dot ${
-              frame.status === "confirmed"
+            className={`status-dot ${frame.status === "confirmed"
                 ? "status-dot--success"
                 : frame.status === "needs_review"
                   ? "status-dot--danger"
-                : frame.status === "overridden"
+                  : frame.status === "overridden"
                     ? "status-dot--warning"
                     : ""
-            }`}
+              }`}
           />
           {frame.tags?.length ? (
             <span className="chip chip--muted">
