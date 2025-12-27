@@ -496,6 +496,31 @@ export default function Home() {
     setStorageMessage("Saved frame changes.");
   };
 
+  const runSingleFrameAnalysis = async (frameId: number) => {
+    if (!authToken) {
+      throw new Error("Provide a moderator or admin token to run analysis.");
+    }
+    const response = await fetch(`/api/frames/${frameId}/vision/run`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const payload = await response.json();
+    setAnalysisJob({ id: payload.job_id, status: "queued", processed: 0, total: 1 });
+    upsertTask({
+      id: payload.job_id,
+      label: `Vision analysis for frame #${frameId}`,
+      status: "queued",
+      processed: 0,
+      total: 1,
+      createdAt: new Date().toISOString(),
+      source: "vision",
+    });
+    setAnalysisMessage(`Queued analysis for frame #${frameId}.`);
+  };
+
   const triggerVisionAnalysis = async () => {
     if (!authToken) {
       setAnalysisMessage("Provide a moderator or admin token to run analysis.");
@@ -508,25 +533,7 @@ export default function Home() {
           setAnalysisMessage("Select a frame to analyze.");
           return;
         }
-        const response = await fetch(`/api/frames/${selectedFrameId}/vision/run`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-        const payload = await response.json();
-        setAnalysisJob({ id: payload.job_id, status: "queued", processed: 0, total: 1 });
-        upsertTask({
-          id: payload.job_id,
-          label: `Vision analysis for frame #${selectedFrameId}`,
-          status: "queued",
-          processed: 0,
-          total: 1,
-          createdAt: new Date().toISOString(),
-          source: "vision",
-        });
-        setAnalysisMessage(`Queued analysis for frame #${selectedFrameId}.`);
+        await runSingleFrameAnalysis(selectedFrameId);
         return;
       }
 
@@ -990,15 +997,14 @@ export default function Home() {
                         </div>
                         <div className="tasks-table__cell">
                           <span
-                            className={`chip ${
-                              task.status === "done"
-                                ? "chip--success"
-                                : task.status === "failed"
-                                  ? "chip--danger"
-                                  : task.status === "queued"
-                                    ? "chip--muted"
-                                    : ""
-                            }`}
+                            className={`chip ${task.status === "done"
+                              ? "chip--success"
+                              : task.status === "failed"
+                                ? "chip--danger"
+                                : task.status === "queued"
+                                  ? "chip--muted"
+                                  : ""
+                              }`}
                           >
                             {task.status}
                           </span>
@@ -1134,6 +1140,7 @@ export default function Home() {
         onSaveScene={saveSceneAttributes}
         onSaveActors={saveActorDetections}
         onAssignTmdb={assignFrameToTmdb}
+        onRunAnalysis={runSingleFrameAnalysis}
         authToken={authToken}
       />
     </main>
