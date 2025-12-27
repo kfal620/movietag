@@ -7,6 +7,7 @@ type Props = {
   onSelect: (frameId: number) => void;
   selectedForExport?: boolean;
   onToggleSelect?: (frameId: number) => void;
+  onEdit?: (frameId: number) => void;
 };
 
 const statusBadge = {
@@ -21,7 +22,7 @@ const statusBadge = {
   actors_detected: { label: "Actors detected", className: "badge badge--success" },
 } as const;
 
-export function FrameCard({ frame, isActive, onSelect, selectedForExport, onToggleSelect }: Props) {
+export function FrameCard({ frame, isActive, onSelect, selectedForExport, onToggleSelect, onEdit }: Props) {
   const badge = statusBadge[frame.status] ?? statusBadge.pending;
   const timeOfDay = frame.sceneAttributes?.find((attr) => attr.attribute === "time_of_day")?.value;
   const environment = frame.sceneAttributes?.find((attr) => attr.attribute === "environment")?.value;
@@ -38,6 +39,28 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
       <div className="card__image">
         <Image src={frame.imageUrl} alt={frame.movieTitle} fill sizes="320px" />
         <span className={badge.className}>{badge.label}</span>
+        {onEdit && (
+          <button
+            className="button button--ghost"
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              background: 'rgba(0,0,0,0.7)',
+              color: 'white',
+              backdropFilter: 'blur(4px)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              padding: '0.25rem 0.5rem',
+              fontSize: '0.75rem'
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(frame.id);
+            }}
+          >
+            Edit
+          </button>
+        )}
         {onToggleSelect ? (
           <label className="chip chip--muted" style={{ position: "absolute", top: 8, right: 8 }}>
             <input

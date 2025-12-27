@@ -6,16 +6,14 @@ type Props = {
   selectedId?: number;
   onSelect: (id: number) => void;
   selectedForExport?: Set<number>;
-  onToggleSelectForExport?: (id: number) => void;
-};
+  onToggleSelectForExport?: (id: number) => void;  onEdit?: (id: number) => void;};
 
 export function FrameGrid({
   frames,
   selectedId,
   onSelect,
   selectedForExport,
-  onToggleSelectForExport,
-}: Props) {
+  onToggleSelectForExport,  onEdit,}: Props) {
   if (!frames.length) {
     return (
       <div className="empty-state">
@@ -33,8 +31,7 @@ export function FrameGrid({
           isActive={frame.id === selectedId}
           onSelect={onSelect}
           selectedForExport={selectedForExport?.has(frame.id)}
-          onToggleSelect={onToggleSelectForExport}
-        />
+          onToggleSelect={onToggleSelectForExport}          onEdit={onEdit}        />
       ))}
     </div>
   );

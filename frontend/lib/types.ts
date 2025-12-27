@@ -67,4 +67,6 @@ export type Frame = {
   sceneAttributes?: SceneAttribute[];
   actors?: ActorDetection[];
   capturedAt?: string | null;
+  embeddingModel?: string | null;
+  embeddingModelVersion?: string | null;
 };

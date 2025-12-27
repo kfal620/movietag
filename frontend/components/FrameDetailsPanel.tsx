@@ -19,8 +19,6 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
   const [assigning, setAssigning] = useState(false);
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
 
-  if (!frame) return null;
-
   useEffect(() => {
     setSearchQuery("");
     setSearchYear("");
@@ -29,6 +27,8 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
     setSearchError(null);
     setAssignMessage(null);
   }, [frame?.id]);
+
+  if (!frame) return null;
 
   const runSearch = async () => {
     if (!searchQuery.trim()) {

@@ -12,6 +12,7 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { StorageExplorer } from "../components/StorageExplorer";
 import { Sidebar } from "../components/Sidebar";
 import { VisionModelsPanel } from "../components/VisionModelsPanel";
+import { FrameEditModal } from "../components/FrameEditModal";
 
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
@@ -40,6 +41,8 @@ type FrameApiItem = {
   match_confidence?: number | null;
   storage_uri?: string | null;
   captured_at?: string | null;
+  embedding_model?: string | null;
+  embedding_model_version?: string | null;
   tags?: { id: number; name: string; confidence?: number }[];
   scene_attributes?: { id: number; attribute: string; value: string; confidence?: number }[];
   actor_detections?: {
@@ -98,6 +101,7 @@ export default function Home() {
     error?: string | null;
   } | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const [editModalFrameId, setEditModalFrameId] = useState<number | null>(null);
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -171,6 +175,8 @@ export default function Home() {
               posePitch: actor.pose?.pitch ?? null,
               poseRoll: actor.pose?.roll ?? null,
             })) ?? [],
+          embeddingModel: item.embedding_model ?? undefined,
+          embeddingModelVersion: item.embedding_model_version ?? undefined,
         };
       }) ?? [],
     [data],
@@ -368,6 +374,8 @@ export default function Home() {
       match_confidence: updates.matchConfidence,
       status: updates.status,
       captured_at: updates.capturedAt,
+      embedding_model: updates.embeddingModel,
+      embedding_model_version: updates.embeddingModelVersion,
     };
 
     await fetch(`/api/frames/${frameId}`, {
@@ -635,6 +643,7 @@ export default function Home() {
                     onSelect={setSelectedFrameId}
                     selectedForExport={exportSelection}
                     onToggleSelectForExport={toggleExportSelection}
+                    onEdit={setEditModalFrameId}
                   />
                 </section>
               </div>
@@ -739,6 +748,18 @@ export default function Home() {
           {selectedView === "support" ? renderPlaceholder("Support", "Reach the help desk, docs, and operational runbooks.") : null}
         </div>
       </div>
+
+      <FrameEditModal
+        frame={frames.find(f => f.id === editModalFrameId)}
+        isOpen={editModalFrameId !== null}
+        onClose={() => setEditModalFrameId(null)}
+        onSaveMetadata={saveFrameMetadata}
+        onApplyOverride={applyOverride}
+        onSaveScene={saveSceneAttributes}
+        onSaveActors={saveActorDetections}
+        onAssignTmdb={assignFrameToTmdb}
+        authToken={authToken}
+      />
     </main>
   );
 }

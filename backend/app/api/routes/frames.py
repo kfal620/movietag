@@ -270,6 +270,8 @@ class FrameUpdateRequest(BaseModel):
     match_confidence: float | None = None
     status: str | None = None
     captured_at: datetime | None = None
+    embedding_model: str | None = None
+    embedding_model_version: str | None = None
 
 
 @router.patch("/{frame_id}")
