@@ -317,8 +317,6 @@ def sync_assign_frame_tmdb(frame_id: int, payload: TMDBAssignmentRequest) -> dic
         if frame is None:
             raise HTTPException(status_code=404, detail="Frame not found")
 
-        frame = db.merge(frame)
-
         ingestor = TMDBIngestor()
         try:
             ingest_result = ingestor.ingest_movie(payload.tmdb_id)
