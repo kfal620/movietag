@@ -11,6 +11,7 @@ type Props = {
   onSaveScene: (frameId: number, attributes: SceneAttribute[]) => void;
   onSaveActors: (frameId: number, detections: ActorDetection[]) => void;
   onAssignTmdb?: (frameId: number, tmdbId: number) => Promise<void>;
+  onRunAnalysis?: (frameId: number) => Promise<void>;
   authToken?: string;
 };
 
@@ -25,6 +26,7 @@ export function FrameEditModal({
   onSaveScene,
   onSaveActors,
   onAssignTmdb,
+  onRunAnalysis,
   authToken,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("core");
@@ -110,23 +112,17 @@ export function FrameEditModal({
 
   const runVisionAnalysis = async () => {
     if (!frame) return;
-    if (!authToken) {
-      setCoreMessage({ type: "error", text: "Moderator token required." });
+    if (!onRunAnalysis) {
+      setCoreMessage({ type: "error", text: "Analysis unconfigured." });
       return;
     }
     setAnalyzing(true);
     setCoreMessage(null);
     try {
-      const response = await fetch(`/api/frames/${frame.id}/vision/run`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!response.ok) {
-        throw new Error("Failed to start analysis");
-      }
+      await onRunAnalysis(frame.id);
       setCoreMessage({ type: "success", text: "Vision analysis queued." });
     } catch (error) {
-      setCoreMessage({ type: "error", text: "Analysis failed to start." });
+      setCoreMessage({ type: "error", text: error instanceof Error ? error.message : "Analysis failed to start." });
     } finally {
       setAnalyzing(false);
     }
