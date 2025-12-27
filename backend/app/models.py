@@ -146,7 +146,7 @@ class Frame(Base):
     file_path = Column(String(512), nullable=False)
     storage_uri = Column(String(512), nullable=True)
     signed_url = Column(String(1024), nullable=True)
-    status = Column(String(50), nullable=False, server_default="pending")
+    status = Column(String(50), nullable=False, server_default="needs_analyzing")
     ingested_at = Column(DateTime(timezone=True), nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=True)
     embedding = Column(Text, nullable=True)

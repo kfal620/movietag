@@ -58,7 +58,7 @@ def seed_frame(session):
     frame = Frame(
         movie_id=movie.id,
         file_path="/tmp/test.jpg",
-        status="tagged",
+        status="analyzed",
         ingested_at=datetime.utcnow(),
     )
     tag = Tag(name="night")
@@ -260,21 +260,21 @@ def test_match_frame_updates_predictions():
             movie_id=primary_movie.id,
             file_path="/tmp/primary.jpg",
             embedding=json.dumps([1.0, 0.0]),
-            status="tagged",
+            status="analyzed",
             ingested_at=datetime.utcnow(),
         )
         secondary_frame = Frame(
             movie_id=secondary_movie.id,
             file_path="/tmp/secondary.jpg",
             embedding=json.dumps([0.0, 1.0]),
-            status="tagged",
+            status="analyzed",
             ingested_at=datetime.utcnow(),
         )
         target_frame = Frame(
             movie_id=None,
             file_path="/tmp/target.jpg",
             embedding=json.dumps([1.0, 0.1]),
-            status="embedded",
+            status="needs_analyzing",
             ingested_at=datetime.utcnow(),
         )
         session.add_all([primary_frame, secondary_frame, target_frame])
@@ -284,12 +284,12 @@ def test_match_frame_updates_predictions():
 
     match_result = frame_tasks._match_frame(frame_id, session_factory=SessionLocal)
     assert match_result["movie_id"] == target_movie_id
-    assert match_result["status"] == "matched"
+    assert match_result["status"] == "analyzed"
     assert match_result["match_confidence"] >= 0.5
 
     with SessionLocal() as session:
         refreshed = session.get(Frame, frame_id)
         assert refreshed.movie_id == target_movie_id
-        assert refreshed.status == "matched"
+        assert refreshed.status == "analyzed"
         assert refreshed.match_confidence == match_result["match_confidence"]
         assert refreshed.predicted_shot_id is not None

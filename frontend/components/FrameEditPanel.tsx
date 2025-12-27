@@ -39,7 +39,7 @@ export function FrameEditPanel({
             // Core
             setDraftMetadata({
                 movieId: frame.movieId,
-                predictedMovieId: frame.predictedMovieId,
+
                 predictedTimestamp: frame.predictedTimestamp ?? undefined,
                 predictedShotId: frame.predictedShotId ?? undefined,
                 shotTimestamp: frame.shotTimestamp ?? undefined,
@@ -174,14 +174,7 @@ export function FrameEditPanel({
                         placeholder="123"
                     />
 
-                    <label className="label" htmlFor="predictedMovieId" style={{ marginTop: 8 }}>Predicted movie ID</label>
-                    <input
-                        id="predictedMovieId"
-                        className="input"
-                        value={draftMetadata.predictedMovieId ?? ""}
-                        onChange={(event) => setDraftMetadata((prev) => ({ ...prev, predictedMovieId: event.target.value ? Number(event.target.value) : null }))}
-                        placeholder="Predicted movie"
-                    />
+
 
                     <label className="label" htmlFor="status" style={{ marginTop: 8 }}>Status</label>
                     <select
@@ -190,15 +183,10 @@ export function FrameEditPanel({
                         value={draftMetadata.status}
                         onChange={(event) => updateMetadata("status", event.target.value)}
                     >
-                        <option value="pending">Pending</option>
-                        <option value="new">New</option>
-                        <option value="needs_review">Needs review</option>
+                        <option value="needs_analyzing">Needs Analyzing</option>
+                        <option value="analyzed">Analyzed</option>
+                        <option value="tmdb_only">Tmdb Only</option>
                         <option value="confirmed">Confirmed</option>
-                        <option value="overridden">Overridden</option>
-                        <option value="tagged">Tagged</option>
-                        <option value="embedded">Embedded</option>
-                        <option value="scene_annotated">Scene annotated</option>
-                        <option value="actors_detected">Actors detected</option>
                     </select>
 
                     <label className="label" htmlFor="filePath" style={{ marginTop: 8 }}>File path</label>

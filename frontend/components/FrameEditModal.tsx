@@ -58,7 +58,7 @@ export function FrameEditModal({
       // Core
       setDraftMetadata({
         movieId: frame.movieId,
-        predictedMovieId: frame.predictedMovieId,
+
         predictedTimestamp: frame.predictedTimestamp ?? undefined,
         predictedShotId: frame.predictedShotId ?? undefined,
         shotTimestamp: frame.shotTimestamp ?? undefined,
@@ -317,16 +317,7 @@ export function FrameEditModal({
                   />
                 </div>
 
-                <div>
-                  <label className="label" htmlFor="predictedMovieId">Predicted movie ID</label>
-                  <input
-                    id="predictedMovieId"
-                    className="input"
-                    value={draftMetadata.predictedMovieId ?? ""}
-                    onChange={(event) => setDraftMetadata((prev) => ({ ...prev, predictedMovieId: event.target.value ? Number(event.target.value) : null }))}
-                    placeholder="Predicted movie"
-                  />
-                </div>
+
 
                 <div>
                   <label className="label" htmlFor="status">Status</label>
@@ -336,15 +327,10 @@ export function FrameEditModal({
                     value={draftMetadata.status}
                     onChange={(event) => updateMetadata("status", event.target.value)}
                   >
-                    <option value="pending">Pending</option>
-                    <option value="new">New</option>
-                    <option value="needs_review">Needs review</option>
+                    <option value="needs_analyzing">Needs Analyzing</option>
+                    <option value="analyzed">Analyzed</option>
+                    <option value="tmdb_only">Tmdb Only</option>
                     <option value="confirmed">Confirmed</option>
-                    <option value="overridden">Overridden</option>
-                    <option value="tagged">Tagged</option>
-                    <option value="embedded">Embedded</option>
-                    <option value="scene_annotated">Scene annotated</option>
-                    <option value="actors_detected">Actors detected</option>
                   </select>
                 </div>
 
@@ -581,8 +567,8 @@ export function FrameEditModal({
                       result.poster_path && result.poster_path.startsWith("http")
                         ? result.poster_path
                         : result.poster_path
-                            ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
-                            : "/placeholder-thumbnail.svg";
+                          ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
+                          : "/placeholder-thumbnail.svg";
                     return (
                       <div
                         key={result.tmdb_id}

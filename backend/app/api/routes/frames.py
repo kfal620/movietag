@@ -252,7 +252,7 @@ def create_frame_from_storage(
         movie_id=payload.movie_id,
         captured_at=payload.captured_at,
         ingested_at=datetime.utcnow(),
-        status="pending",
+        status="needs_analyzing",
     )
     db.add(frame)
     db.commit()
@@ -337,7 +337,7 @@ def sync_assign_frame_tmdb(frame_id: int, payload: TMDBAssignmentRequest) -> dic
 
         frame.movie_id = movie.id
         frame.match_confidence = 1.0
-        frame.status = "confirmed"
+        frame.status = "tmdb_only"
         frame.metadata_source = ingest_result.get("provider") or "tmdb"
 
         db.add(frame)
@@ -486,7 +486,7 @@ def replace_scene_attributes(
             )
         )
 
-    frame.status = "scene_annotated"
+    frame.status = "analyzed"
     db.add(frame)
     db.commit()
     db.refresh(frame)
@@ -542,7 +542,7 @@ def replace_actor_detections(
             )
         )
 
-    frame.status = "actors_detected"
+    frame.status = "analyzed"
     db.add(frame)
     db.commit()
     db.refresh(frame)

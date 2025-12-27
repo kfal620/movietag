@@ -43,10 +43,10 @@ def test_embed_and_tag_pipeline(tmp_path, monkeypatch):
     assert embed_result["embedding_dimensions"] >= 128
 
     tag_result = frame_tasks.tag_frame(frame_id)
-    assert tag_result["status"] == "tagged"
+    assert tag_result["status"] == "analyzed"
 
     scene_result = frame_tasks.detect_scene_attributes(frame_id)
     assert scene_result["attributes"]
 
     actor_result = frame_tasks.detect_actor_faces(frame_id)
-    assert actor_result["status"] == "actors_detected"
+    assert actor_result["status"] == "analyzed"

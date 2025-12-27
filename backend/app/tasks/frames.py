@@ -153,12 +153,12 @@ def _match_frame_with_known_movies(
         frame.match_confidence = match["confidence"]
         frame.predicted_timestamp = match.get("timestamp")
         frame.predicted_shot_id = match.get("shot_id")
-        frame.status = "matched"
+        frame.status = "analyzed"
         frame.failure_reason = None
         session.add(frame)
         return match
 
-    frame.status = "unmatched"
+    frame.status = "analyzed"
     frame.failure_reason = None
     session.add(frame)
     return None
@@ -394,7 +394,7 @@ def _mark_failure(frame_id: int, reason: str, session_factory: SessionFactory | 
         if frame is None:
             return
         frame.failure_reason = reason
-        frame.status = "failed"
+        frame.status = "needs_analyzing"
         session.add(frame)
 
 
@@ -483,7 +483,7 @@ def import_frame(
                 signed_url=signed_url,
                 captured_at=parsed_captured_at,
                 ingested_at=datetime.utcnow(),
-                status="new",
+                status="needs_analyzing",
                 failure_reason=None,
             )
             session.add(frame)
@@ -523,7 +523,7 @@ def embed_frame(
         if frame is None:
             raise ValueError(f"Frame with id {frame_id} does not exist")
 
-        frame.status = "embedding"
+        frame.status = "needs_analyzing"
         frame.failure_reason = None
         session.add(frame)
         session.flush()
@@ -570,7 +570,7 @@ def embed_frame(
         frame.embedding = json.dumps(embedding)
         frame.embedding_model = embed_model_name
         frame.embedding_model_version = embed_model_version
-        frame.status = "embedded"
+        frame.status = "needs_analyzing"
         session.add(frame)
 
         logger.info("Embedded frame %s (dim=%s)", frame.id, len(embedding))
@@ -630,7 +630,7 @@ def tag_frame(
             applied_tags.append({"name": tag.name, "confidence": confidence})
 
         frame.failure_reason = None
-        frame.status = "tagged"
+        frame.status = "analyzed"
         session.add(frame)
 
         logger.info("Tagged frame %s with %s labels", frame.id, len(applied_tags))
@@ -681,7 +681,7 @@ def detect_scene_attributes(
             applied = _persist_scene_attributes(session, frame, predictions)
 
             frame.failure_reason = None
-            frame.status = "scene_annotated"
+            frame.status = "analyzed"
             session.add(frame)
 
             logger.info("Scene attributes stored for frame %s", frame.id)
@@ -786,10 +786,10 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
                 persisted = _persist_actor_detections(session, frame)
 
             frame.failure_reason = None
-            frame.status = "actors_detected"
+            frame.status = "analyzed"
             session.add(frame)
             return {
-                "status": "actors_detected",
+                "status": "analyzed",
                 "frame_id": frame.id,
                 "detections": persisted,
             }
@@ -813,7 +813,7 @@ def _match_frame(
 
         # IMPORTANT: read ORM attributes while the session is still alive
         return {
-            "status": "matched" if match else "unmatched",
+            "status": "analyzed",
             "movie_id": frame.movie_id,
             "match_confidence": frame.match_confidence,
             "predicted_timestamp": frame.predicted_timestamp,
@@ -876,7 +876,7 @@ def enrich_frame_metadata(
             frame.scene_summary = scene_summary
         frame.metadata_source = ingest_result.get("provider") or provider_hint or frame.metadata_source
         frame.failure_reason = None
-        frame.status = "enriched"
+        frame.status = "analyzed"
         session.add(frame)
 
         logger.info(
@@ -887,7 +887,7 @@ def enrich_frame_metadata(
         )
 
         return {
-            "status": "enriched",
+            "status": "analyzed",
             "frame_id": frame.id,
             "movie_id": frame.movie_id,
             "metadata_source": frame.metadata_source,
@@ -945,7 +945,7 @@ def ingest_and_tag_frame(
     with _session_scope() as session:
         frame = session.get(Frame, frame_id)
         if frame and movie_id is not None:
-            frame.status = "tagged"
+            frame.status = "analyzed"
             frame.failure_reason = None
             session.add(frame)
 

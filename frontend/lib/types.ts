@@ -54,7 +54,7 @@ export type Frame = {
   predictions: Prediction[];
   approvedPrediction?: Prediction;
   overrideTitle?: string;
-  status: "pending" | "new" | "needs_review" | "confirmed" | "overridden" | "tagged" | "embedded" | "scene_annotated" | "actors_detected";
+  status: "needs_analyzing" | "analyzed" | "tmdb_only" | "confirmed";
   matchConfidence?: number | null;
   predictedTimestamp?: string | null;
   predictedShotId?: string | null;

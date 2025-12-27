@@ -17,11 +17,10 @@ import { FrameEditModal } from "../components/FrameEditModal";
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
   { label: "All", value: "all" },
-  { label: "New", value: "new" },
-  { label: "Needs review", value: "needs_review" },
+  { label: "Needs Analyzing", value: "needs_analyzing" },
+  { label: "Analyzed", value: "analyzed" },
+  { label: "Tmdb Only", value: "tmdb_only" },
   { label: "Confirmed", value: "confirmed" },
-  { label: "Overridden", value: "overridden" },
-  { label: "Tagged", value: "tagged" },
 ];
 
 type FrameApiItem = {
