@@ -814,7 +814,7 @@ def _match_frame(
         # IMPORTANT: read ORM attributes while the session is still alive
         return {
             "status": "matched" if match else "unmatched",
-            "predicted_movie_id": frame.predicted_movie_id,
+            "movie_id": frame.movie_id,
             "match_confidence": frame.match_confidence,
             "predicted_timestamp": frame.predicted_timestamp,
             "predicted_shot_id": frame.predicted_shot_id,
@@ -823,15 +823,15 @@ def _match_frame(
 
 def _maybe_enqueue_enrichment(
     frame_id: int,
-    predicted_movie_id: int | None,
+    movie_id: int | None,
     predicted_timestamp: str | None = None,
     session_factory: SessionFactory | None = None,
 ) -> None:
-    if predicted_movie_id is None:
+    if movie_id is None:
         return
 
     with _session_scope(session_factory) as session:
-        movie = session.get(Movie, predicted_movie_id)
+        movie = session.get(Movie, movie_id)
         if movie is None or movie.tmdb_id is None:
             return
         enrich_frame_metadata.delay(
@@ -868,8 +868,6 @@ def enrich_frame_metadata(
         if movie is not None:
             if frame.movie_id is None:
                 frame.movie_id = movie.id
-            if frame.predicted_movie_id is None:
-                frame.predicted_movie_id = movie.id
             if scene_summary is None and movie.description:
                 scene_summary = movie.description
 
@@ -931,7 +929,7 @@ def ingest_and_tag_frame(
             match_result = _match_frame(frame_id)
             _maybe_enqueue_enrichment(
                 frame_id,
-                match_result.get("predicted_movie_id"),
+                match_result.get("movie_id"),
                 match_result.get("predicted_timestamp"),
             )
         else:

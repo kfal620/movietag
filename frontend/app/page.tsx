@@ -28,8 +28,6 @@ type FrameApiItem = {
   id: number;
   movie_id: number | null;
   movie_title?: string | null;
-  predicted_movie_id?: number | null;
-  predicted_movie_title?: string | null;
   status: Frame["status"];
   signed_url?: string | null;
   file_path: string;
@@ -143,8 +141,6 @@ export default function Home() {
           movieId: item.movie_id,
           movieTitle:
             item.movie_title || (item.movie_id ? `Movie #${item.movie_id}` : "Unknown movie"),
-          predictedMovieId: item.predicted_movie_id ?? null,
-          predictedMovieTitle: item.predicted_movie_title ?? null,
           filePath: item.file_path,
           storageUri: item.storage_uri,
           signedUrl: item.signed_url ?? undefined,
@@ -463,12 +459,12 @@ export default function Home() {
         setAnalysisJob((prev) =>
           prev
             ? {
-                ...prev,
-                status: payload.status ?? prev.status,
-                processed: payload.processed ?? prev.processed,
-                total: payload.total ?? prev.total,
-                error: payload.error ?? null,
-              }
+              ...prev,
+              status: payload.status ?? prev.status,
+              processed: payload.processed ?? prev.processed,
+              total: payload.total ?? prev.total,
+              error: payload.error ?? null,
+            }
             : prev,
         );
         if (payload.status === "done") {

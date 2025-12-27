@@ -233,8 +233,6 @@ def test_get_frame_exposes_prediction_fields():
     with SessionLocal() as session:
         frame_id = seed_frame(session)
         frame = session.get(Frame, frame_id)
-        movie_id = frame.movie_id
-        frame.predicted_movie_id = movie_id
         frame.match_confidence = 0.84
         frame.predicted_timestamp = "00:10:00"
         frame.predicted_shot_id = "shot-123"
@@ -245,7 +243,6 @@ def test_get_frame_exposes_prediction_fields():
     response = client.get(f"/api/frames/{frame_id}")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["predicted_movie_id"] == movie_id
     assert payload["match_confidence"] == 0.84
     assert payload["predicted_timestamp"] == "00:10:00"
     assert payload["predicted_shot_id"] == "shot-123"
@@ -286,13 +283,13 @@ def test_match_frame_updates_predictions():
         target_movie_id = primary_movie.id
 
     match_result = frame_tasks._match_frame(frame_id, session_factory=SessionLocal)
-    assert match_result["predicted_movie_id"] == target_movie_id
+    assert match_result["movie_id"] == target_movie_id
     assert match_result["status"] == "matched"
     assert match_result["match_confidence"] >= 0.5
 
     with SessionLocal() as session:
         refreshed = session.get(Frame, frame_id)
-        assert refreshed.predicted_movie_id == target_movie_id
+        assert refreshed.movie_id == target_movie_id
         assert refreshed.status == "matched"
         assert refreshed.match_confidence == match_result["match_confidence"]
         assert refreshed.predicted_shot_id is not None

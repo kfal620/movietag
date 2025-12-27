@@ -45,8 +45,6 @@ export type Frame = {
   id: number;
   movieId: number | null;
   movieTitle: string;
-  predictedMovieId?: number | null;
-  predictedMovieTitle?: string | null;
   filePath: string;
   storageUri?: string | null;
   signedUrl?: string | null;
