@@ -109,7 +109,11 @@ export function FrameEditModal({
   };
 
   const runVisionAnalysis = async () => {
-    if (!frame || !authToken) return;
+    if (!frame) return;
+    if (!authToken) {
+      setCoreMessage({ type: "error", text: "Moderator token required." });
+      return;
+    }
     setAnalyzing(true);
     setCoreMessage(null);
     try {
