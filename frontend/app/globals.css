@@ -76,6 +76,131 @@ a {
   height: 100%;
 }
 
+.tasks-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tasks-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.task-summary-card {
+  padding: 1.25rem;
+}
+
+.task-summary-card h3 {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 1.8rem;
+}
+
+.tasks-panel {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.tasks-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.tasks-panel__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.tasks-panel__controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tasks-panel__filters {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tasks-panel__track {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.tasks-panel__message {
+  margin: 0;
+}
+
+.tasks-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tasks-table__head,
+.tasks-table__row {
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 1.2fr 1.2fr 1fr;
+  gap: 1rem;
+}
+
+.tasks-table__head {
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tasks-table__row {
+  padding: 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tasks-table__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.tasks-table__title {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tasks-table__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tasks-table__error {
+  color: var(--danger);
+}
+
+.tasks-table__empty {
+  padding: 1.5rem;
+  border-radius: 14px;
+  border: 1px dashed var(--border);
+  text-align: center;
+}
+
 .panel {
   background: linear-gradient(145deg, var(--panel), var(--panel-contrast));
   border: 1px solid var(--border);
@@ -319,6 +444,11 @@ a {
 
 .chip--muted {
   color: var(--muted);
+}
+
+.chip--danger {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.4);
 }
 
 .progress-track {
@@ -688,6 +818,14 @@ a {
   }
 
   .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tasks-table__head {
+    display: none;
+  }
+
+  .tasks-table__row {
     grid-template-columns: 1fr;
   }
 }
