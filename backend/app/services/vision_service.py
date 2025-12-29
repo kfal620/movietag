@@ -250,23 +250,6 @@ def _store_attributes(
         frame.embedding_model_version = model_version
     
     session.commit()
-    
-    return {
-        "embedding": embedding_result.embedding,
-        "embedding_dimension": len(embedding_result.embedding),
-        "attributes": [
-            {
-                "attribute": score.attribute,
-                "value": score.value,
-                "confidence": score.confidence,
-                "is_verified": False,
-            }
-            for score in attribute_scores
-        ],
-        "cached": False,
-        "embed_time": embed_time,
-        "attribute_time": attribute_time,
-    }
 
 
 def store_frame_embedding(
