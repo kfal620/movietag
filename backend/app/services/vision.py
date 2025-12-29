@@ -462,7 +462,7 @@ def _get_attribute_prototypes(session: Any, attribute: str) -> dict[str, Any]:
 
 
 
-def classify_attributes_with_clip(image: Image.Image, session: Any | None = None) -> list[SceneAttributePrediction]:
+def classify_attributes_with_clip(image: Image.Image, session: Any | None = None) -> tuple[list[SceneAttributePrediction], list[float]]:
     """Run zero-shot classification using the local CLIP model."""
     torch = _lazy_import_torch()
     # Use default model settings
@@ -477,11 +477,12 @@ def classify_attributes_with_clip(image: Image.Image, session: Any | None = None
     pretrained = settings.clip_pretrained if settings else "openai"
     components = get_clip_components(model_name, pretrained)
 
-    # 1. Encode Image
     image_tensor = components.preprocess(image).unsqueeze(0).to(components.device)
     with torch.no_grad():
         image_features = components.model.encode_image(image_tensor)
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        # Convert to list for return
+        embedding_list = image_features.squeeze(0).cpu().tolist()
 
     predictions: list[SceneAttributePrediction] = []
 
@@ -577,12 +578,12 @@ def classify_attributes_with_clip(image: Image.Image, session: Any | None = None
     # 3. Add dominant colors (kept as it is distinct from semantic attributes but useful)
     predictions.extend(_dominant_colors(image, k=3))
     
-    return predictions
+    return predictions, embedding_list
 
 
 def predict_scene_attributes(
     image: Image.Image, service_url: str | None = None, session: Any | None = None
-) -> list[SceneAttributePrediction]:
+) -> tuple[list[SceneAttributePrediction], list[float] | None]:
     """Run production scene classifiers using CLIP zero-shot locally or via service."""
     if service_url:
         try:
@@ -611,7 +612,8 @@ def predict_scene_attributes(
                 except Exception:
                     continue
             if predictions:
-                return predictions
+                # Service API currently doesn't return embedding, so None
+                return predictions, None
         except Exception:
             logger.exception("Scene attribute service failed, falling back to local CLIP")
 
@@ -620,7 +622,7 @@ def predict_scene_attributes(
         return classify_attributes_with_clip(image, session=session)
     except Exception:
         logger.exception("Local CLIP classification failed")
-        return []
+        return [], None
 
 
 

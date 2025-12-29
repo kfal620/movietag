@@ -663,7 +663,9 @@ def detect_scene_attributes(
             image = _load_image(path)
 
             try:
-                predictions = predict_scene_attributes(image, service_url=settings.vision_service_url)
+                predictions, embedding = predict_scene_attributes(image, service_url=settings.vision_service_url)
+                if embedding:
+                    frame.embedding = json.dumps(embedding)
             except Exception:
                 logger.exception("Scene attribute prediction failed for frame %s", frame.id)
                 predictions = []
