@@ -62,6 +62,7 @@ type FrameApiItem = {
   captured_at?: string | null;
   embedding_model?: string | null;
   embedding_model_version?: string | null;
+  analysisLog?: Record<string, any> | null;
   tags?: { id: number; name: string; confidence?: number }[];
   scene_attributes?: { id: number; attribute: string; value: string; confidence?: number }[];
   actor_detections?: {
@@ -219,6 +220,7 @@ export default function Home() {
             })) ?? [],
           embeddingModel: item.embedding_model ?? undefined,
           embeddingModelVersion: item.embedding_model_version ?? undefined,
+          analysisLog: item.analysisLog,
         };
       }) ?? [],
     [data],
