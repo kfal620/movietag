@@ -177,6 +177,9 @@ class Frame(Base):
     actor_detections = relationship(
         "ActorDetection", back_populates="frame", cascade="all, delete"
     )
+    embeddings = relationship(
+        "FrameEmbedding", back_populates="frame", cascade="all, delete"
+    )
 
 
 
@@ -289,3 +292,35 @@ class ActorDetection(Base):
     )
     frame = relationship("Frame", back_populates="actor_detections")
     cast_member = relationship("CastMember")
+
+
+class FrameEmbedding(Base):
+    """Store embeddings per frame and pipeline.
+    
+    This table allows storing multiple embeddings for the same frame using
+    different vision pipelines. The existing Frame.embedding column is kept
+    for backwards compatibility.
+    """
+
+    __tablename__ = "frame_embeddings"
+    __table_args__ = (
+        UniqueConstraint("frame_id", "pipeline_id", name="uq_frame_embedding_pipeline"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    frame_id = Column(
+        Integer, ForeignKey("frames.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pipeline_id = Column(String(100), nullable=False, index=True)
+    embedding = Column(Text, nullable=False)  # JSON array of floats
+    model_version = Column(String(100), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        server_onupdate=func.now(),
+    )
+    frame = relationship("Frame", back_populates="embeddings")

@@ -94,6 +94,18 @@ class Settings(BaseSettings):
         default="openai",
         validation_alias=AliasChoices("APP_CLIP_PRETRAINED", "CLIP_PRETRAINED"),
     )
+    enhanced_clip_model_name: str = Field(
+        default="ViT-L-14",
+        validation_alias=AliasChoices("APP_ENHANCED_CLIP_MODEL_NAME", "ENHANCED_CLIP_MODEL_NAME"),
+    )
+    enhanced_clip_pretrained: str = Field(
+        default="laion2b_s32b_b82k",
+        validation_alias=AliasChoices("APP_ENHANCED_CLIP_PRETRAINED", "ENHANCED_CLIP_PRETRAINED"),
+    )
+    enhanced_clip_batch_size: int = Field(
+        default=4,
+        validation_alias=AliasChoices("APP_ENHANCED_CLIP_BATCH_SIZE", "ENHANCED_CLIP_BATCH_SIZE"),
+    )
     face_min_confidence: float = Field(
         default=0.9,
         validation_alias=AliasChoices("APP_FACE_MIN_CONFIDENCE", "FACE_MIN_CONFIDENCE"),

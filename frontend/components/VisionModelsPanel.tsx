@@ -1,24 +1,12 @@
 import { useEffect, useState } from "react";
-
-type VisionModelStatus = {
-  id: string;
-  name: string;
-  loaded: boolean;
-  available: boolean;
-  device: string;
-  version?: string | null;
-  last_loaded_at?: string | null;
-  error?: string | null;
-};
-
-type VisionStatusResponse = { models: VisionModelStatus[] };
+import type { VisionPipeline, PipelinesResponse } from "../lib/types";
 
 type Props = {
   authToken?: string;
 };
 
 export function VisionModelsPanel({ authToken }: Props) {
-  const [models, setModels] = useState<VisionModelStatus[]>([]);
+  const [pipelines, setPipelines] = useState<VisionPipeline[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [warming, setWarming] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -29,21 +17,21 @@ export function VisionModelsPanel({ authToken }: Props) {
 
     const fetchStatus = async () => {
       try {
-        const response = await fetch("/api/models/vision/status", {
+        const response = await fetch("/api/vision/pipelines", {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
         });
         if (!response.ok) {
           const detail = await response.text();
-          throw new Error(detail || "Unable to load model status.");
+          throw new Error(detail || "Unable to load pipeline status.");
         }
-        const payload = (await response.json()) as VisionStatusResponse;
+        const payload = (await response.json()) as PipelinesResponse;
         if (mounted) {
-          setModels(payload.models ?? []);
+          setPipelines(payload.pipelines ?? []);
           setError(null);
         }
       } catch (err) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : "Unable to load model status.");
+          setError(err instanceof Error ? err.message : "Unable to load pipeline status.");
         }
       }
     };
@@ -83,44 +71,50 @@ export function VisionModelsPanel({ authToken }: Props) {
     }
   };
 
-  const needsWarmup = models.some((model) => model.available && !model.loaded);
+  const needsWarmup = pipelines.some((pipeline) => !pipeline.loaded);
 
   return (
     <section className="settings-card" aria-live="polite">
       <div className="settings-card__header">
         <div>
-          <p className="eyebrow">Vision models</p>
-          <h3 style={{ margin: "0.1rem 0 0.35rem" }}>Live model readiness</h3>
+          <p className="eyebrow">Vision Pipelines</p>
+          <h3 style={{ margin: "0.1rem 0 0.35rem" }}>Available Models</h3>
           <p className="muted">
-            Status refreshes every few seconds to show what is loaded and ready for inference.
+            Status refreshes every few seconds. Select different pipelines for standard or enhanced analysis.
           </p>
         </div>
         {needsWarmup ? <span className="pill">Needs warmup</span> : <span className="pill pill--primary">Ready</span>}
       </div>
 
       <div className="settings-card__body">
-        {models.length ? (
+        {pipelines.length ? (
           <ul className="list">
-            {models.map((model) => (
-              <li key={model.id} className="list__item">
+            {pipelines.map((pipeline) => (
+              <li key={pipeline.id} className="list__item">
                 <div>
-                  <strong>{model.name}</strong>
+                  <strong>{pipeline.name}</strong>
                   <div className="muted" style={{ marginTop: 4 }}>
-                    Device: {model.device || "unknown"} · Version: {model.version || "—"}
+                    Model: {pipeline.model_id} · Device: {pipeline.device} · Resolution: {pipeline.input_resolution}px
                   </div>
-                  {model.last_loaded_at ? (
-                    <div className="muted">Last loaded: {new Date(model.last_loaded_at).toLocaleString()}</div>
+                  {pipeline.version ? (
+                    <div className="muted" style={{ fontSize: "0.85rem" }}>
+                      Version: {pipeline.version}
+                    </div>
                   ) : null}
-                  {model.error ? <div style={{ color: "var(--danger)" }}>Error: {model.error}</div> : null}
+                  <div style={{ marginTop: 6 }}>
+                    <span style={{ fontSize: "0.85rem", color: pipeline.loaded ? "var(--success)" : "var(--muted)" }}>
+                      {pipeline.loaded ? "✓ Loaded and ready" : "○ Not loaded yet"}
+                    </span>
+                  </div>
                 </div>
-                <span className={`chip ${model.loaded ? "chip--success" : "chip--muted"}`}>
-                  {model.loaded ? "Loaded" : model.available ? "Not loaded" : "Unavailable"}
+                <span className={`chip ${pipeline.loaded ? "chip--success" : "chip--muted"}`}>
+                  {pipeline.loaded ? "Loaded" : "Not loaded"}
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No vision models reported yet.</p>
+          <p className="muted">No vision pipelines reported yet.</p>
         )}
       </div>
 

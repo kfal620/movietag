@@ -70,3 +70,36 @@ export type Frame = {
   embeddingModelVersion?: string | null;
   analysisLog?: Record<string, any> | null;
 };
+
+export type VisionPipeline = {
+  id: string;
+  name: string;
+  model_id: string;
+  input_resolution: number;
+  device: string;
+  dtype: string;
+  version?: string | null;
+  loaded: boolean;
+};
+
+export type PipelinesResponse = {
+  pipelines: VisionPipeline[];
+};
+
+export type AnalyzeFrameRequest = {
+  frame_id: number;
+  pipeline_id?: string;
+  force?: boolean;
+};
+
+export type AnalyzeFrameResponse = {
+  status: string;
+  frame_id: number;
+  pipeline_id: string;
+  embedding: number[];
+  embedding_dimension: number;
+  attributes: SceneAttribute[];
+  cached: boolean;
+  embed_time?: number;
+  attribute_time?: number;
+};
