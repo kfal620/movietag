@@ -154,31 +154,59 @@ def analyze_frame(
             session=session,
         )
         
-        # Create detailed analysis log
+        # Create detailed analysis log in the format AnalysisLogModal expects
+        # Group scores by attribute for easier frontend display
         pipeline_metadata = pipeline.get_metadata()
+        
+        # Build attribute log (top-level keys are attribute names)
+        attribute_log = {}
+        for score in attribute_scores:
+            attr_name = score.attribute
+            if attr_name not in attribute_log:
+                attribute_log[attr_name] = {
+                    "selected": None,
+                    "candidates": []
+                }
+            
+            # Add this score to candidates
+            score_entry = {
+                "label": score.value,
+                "clip_score": score.confidence,  # This will be overridden if debug_info exists
+                "prototype_score": None,
+                "prototype_count": 0,
+                "final_score": score.confidence,
+            }
+            
+            # Extract debug info if available
+            if score.debug_info:
+                score_entry["clip_score"] = score.debug_info.get("clip_score", score.confidence)
+                score_entry["prototype_score"] = score.debug_info.get("prototype_score")
+                score_entry["prototype_count"] = score.debug_info.get("prototype_count", 0)
+                score_entry["final_score"] = score.debug_info.get("final_score", score.confidence)
+            
+            attribute_log[attr_name]["candidates"].append(score_entry)
+            
+            # Set the highest scoring one as "selected"
+            if (attribute_log[attr_name]["selected"] is None or 
+                score_entry["final_score"] > attribute_log[attr_name]["selected"]["final_score"]):
+                attribute_log[attr_name]["selected"] = score_entry
+        
+        # Add metadata to the log
         analysis_log = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "pipeline_id": pipeline_id,
-            "pipeline_name": pipeline_metadata.name,
-            "model_id": pipeline_metadata.model_id,
-            "device": pipeline_metadata.device,
-            "embedding": {
-                "dimension": len(embedding_result.embedding),
+            **attribute_log,
+            "_metadata": {
+                "timestamp": datetime.utcnow().isoformat(),
+                "pipeline_id": pipeline_id,
+                "pipeline_name": pipeline_metadata.name,
+                "model_id": pipeline_metadata.model_id,
+                "device": pipeline_metadata.device,
+                "embedding_dimension": len(embedding_result.embedding),
                 "model_version": embedding_result.model_version,
-                "compute_time_sec": embed_time,
-            },
-            "attributes": {
-                "compute_time_sec": attr_time,
-                "scores": [
-                    {
-                        "attribute": score.attribute,
-                        "value": score.value,
-                        "confidence": score.confidence,
-                        "debug_info": score.debug_info,
-                    }
-                    for score in attribute_scores
-                ],
-            },
+                "compute_time": {
+                    "embed_sec": embed_time,
+                    "attributes_sec": attr_time,
+                },
+            }
         }
         
         # Update frame with analysis log
