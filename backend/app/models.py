@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -143,7 +144,7 @@ class Frame(Base):
     predicted_shot_id = Column(String(100), nullable=True)
     shot_timestamp = Column(String(100), nullable=True)
     scene_summary = Column(Text, nullable=True)
-    analysis_log = Column(JSON, nullable=True)
+    analysis_log = Column(JSONB, nullable=True)
     metadata_source = Column(String(100), nullable=True)
     file_path = Column(String(512), nullable=False)
     storage_uri = Column(String(512), nullable=True)

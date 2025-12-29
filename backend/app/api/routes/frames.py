@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 import asyncio
 import json
 import logging
@@ -44,11 +44,11 @@ logger = logging.getLogger(__name__)
 
 
 class FrameFilters(BaseModel):
-    movie_id: int | None = None
-    tag: list[str] | None = None
-    status: str | None = None
-    cast_member_id: int | None = None
-    time_of_day: str | None = None
+    movie_id: Optional[int] = None
+    tag: Optional[list[str]] = None
+    status: Optional[str] = None
+    cast_member_id: Optional[int] = None
+    time_of_day: Optional[str] = None
     limit: int = 20
     offset: int = 0
     sort: str = "-created_at"
