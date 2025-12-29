@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { ActorDetection, Frame, Prediction, SceneAttribute, TmdbSearchResult } from "../lib/types";
 import { AnalysisLogModal } from "./AnalysisLogModal";
+import { VisionPipelineSelector } from "./VisionPipelineSelector";
+import { getSelectedPipelineId, setSelectedPipelineId } from "../lib/visionSettings";
 
 type Props = {
   frame?: Frame;
@@ -40,6 +42,7 @@ export function FrameEditModal({
   // -- Core Metadata State --
   const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
   const [analyzing, setAnalyzing] = useState(false);
+  const [selectedPipeline, setSelectedPipeline] = useState<string>(getSelectedPipelineId());
   const [coreMessage, setCoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showLog, setShowLog] = useState(false);
 
@@ -142,59 +145,66 @@ export function FrameEditModal({
 
   const runVisionAnalysis = async () => {
     if (!localFrame) return;
-    if (!onRunAnalysis) {
-      setCoreMessage({ type: "error", text: "Analysis unconfigured." });
+    if (!authToken) {
+      setCoreMessage({ type: "error", text: "Authentication required for analysis." });
       return;
     }
+
     setAnalyzing(true);
     setCoreMessage(null);
+
     try {
-      const taskId = await onRunAnalysis(localFrame.id);
-      setCoreMessage({ type: "success", text: "Analysis running..." });
+      // Use the new pipeline-aware analysis endpoint
+      const response = await fetch("/api/vision/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          frame_id: localFrame.id,
+          pipeline_id: selectedPipeline,
+          force: false,
+        }),
+      });
 
-      // Poll for completion
-      if (taskId && typeof taskId === 'string') {
-        const poll = setInterval(async () => {
-          try {
-            const res = await fetch(`/api/tasks/${taskId}`); // Was /api/frames/tasks/ which might be wrong, checking routes
-            if (res.ok) {
-              const status = await res.json();
-              if (status.status === 'done') { // TaskRecord uses 'done', 'failed'. Check page.tsx logic
-                clearInterval(poll);
-                // Refresh frame
-                const frameRes = await fetch(`/api/frames/${localFrame.id}`, {
-                  headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
-                });
-                if (frameRes.ok) {
-                  const newFrame = await frameRes.json();
-                  setLocalFrame({ ...newFrame, predictions: localFrame?.predictions || [] });
-                  setCoreMessage({ type: "success", text: "Analysis complete." });
-                }
-                setAnalyzing(false);
-              } else if (status.status === 'failed') {
-                clearInterval(poll);
-                setCoreMessage({ type: "error", text: "Analysis failed." });
-                setAnalyzing(false);
-              }
-            }
-          } catch (e) {
-            // ignore poll errors
-          }
-        }, 1000);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Analysis failed");
+      }
 
-        // Timeout after 30s
-        setTimeout(() => {
-          clearInterval(poll);
-          setAnalyzing(false);
-        }, 30000);
-      } else {
-        setAnalyzing(false);
+      const result = await response.json();
+
+      setCoreMessage({
+        type: "success",
+        text: result.cached
+          ? `Analysis complete (cached, ${result.embedding_dimension}-dim)`
+          : `Analysis complete (${result.embed_time?.toFixed(2)}s embed, ${result.attribute_time?.toFixed(2)}s attr)`
+      });
+
+      // Refresh the frame to get updated attributes
+      const frameRes = await fetch(`/api/frames/${localFrame.id}`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+      });
+
+      if (frameRes.ok) {
+        const newFrame = await frameRes.json();
+        setLocalFrame({ ...newFrame, predictions: localFrame?.predictions || [] });
       }
 
     } catch (error) {
-      setCoreMessage({ type: "error", text: error instanceof Error ? error.message : "Analysis failed to start." });
+      setCoreMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Analysis failed"
+      });
+    } finally {
       setAnalyzing(false);
     }
+  };
+
+  const handlePipelineChange = (pipelineId: string) => {
+    setSelectedPipeline(pipelineId);
+    setSelectedPipelineId(pipelineId); // Save to localStorage
   };
 
   // -- Scene Handlers --
@@ -370,12 +380,22 @@ export function FrameEditModal({
             <p style={{ color: "var(--muted)", margin: 0, marginBottom: "1rem" }}>
               Status: {localFrame.status.replace("_", " ")}
             </p>
+
+            {/* Pipeline Selector */}
+            <div style={{ marginBottom: "1rem" }}>
+              <VisionPipelineSelector
+                value={selectedPipeline}
+                onChange={handlePipelineChange}
+                authToken={authToken}
+              />
+            </div>
+
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto" }}>
               <button
                 type="button"
                 className="button button--ghost"
                 onClick={runVisionAnalysis}
-                disabled={analyzing}
+                disabled={analyzing || !authToken}
                 style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
               >
                 {analyzing ? "Analyzing..." : "Run Vision Analysis"}
