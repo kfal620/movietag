@@ -64,7 +64,7 @@ type FrameApiItem = {
   embedding_model_version?: string | null;
   analysisLog?: Record<string, any> | null;
   tags?: { id: number; name: string; confidence?: number }[];
-  scene_attributes?: { id: number; attribute: string; value: string; confidence?: number }[];
+  scene_attributes?: { id: number; attribute: string; value: string; confidence?: number; is_verified?: boolean }[];
   actor_detections?: {
     id: number;
     cast_member_id: number | null;
@@ -196,7 +196,14 @@ export default function Home() {
           predictions,
           status: item.status,
           tags: item.tags?.map((tag) => ({ id: tag.id, name: tag.name, confidence: tag.confidence })) ?? [],
-          sceneAttributes: item.scene_attributes,
+          sceneAttributes:
+            item.scene_attributes?.map((attr) => ({
+              id: attr.id,
+              attribute: attr.attribute,
+              value: attr.value,
+              confidence: attr.confidence,
+              isVerified: attr.is_verified,
+            })) ?? [],
           metadataSource: item.metadata_source,
           matchConfidence: item.match_confidence,
           predictedTimestamp: item.predicted_timestamp ?? undefined,
