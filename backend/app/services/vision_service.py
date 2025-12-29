@@ -144,7 +144,15 @@ def analyze_frame(
         attr_time = time.time() - attr_start
         
         # Store attributes in database
-        _store_attributes(frame_id, attribute_scores, session)
+        _store_attributes(
+            frame_id=frame_id,
+            attribute_scores=attribute_scores,
+            pipeline_id=pipeline_id,
+            frame=frame,
+            embedding=embedding_result.embedding,
+            model_version=embedding_result.model_version,
+            session=session,
+        )
         
         # Create detailed analysis log
         pipeline_metadata = pipeline.get_metadata()
@@ -207,7 +215,15 @@ def analyze_frame(
             session.close()
 
 
-def _store_attributes(frame_id: int, attribute_scores: list, session: Session) -> None:
+def _store_attributes(
+    frame_id: int, 
+    attribute_scores: list, 
+    pipeline_id: str,
+    frame: Frame,
+    embedding: list[float],
+    model_version: Optional[str],
+    session: Session
+) -> None:
     """Helper to store attribute scores in the database."""
     from app.models import SceneAttribute
 
@@ -227,14 +243,13 @@ def _store_attributes(frame_id: int, attribute_scores: list, session: Session) -
         )
         session.add(attr)
     
-    session.commit()
-    
     # If this is the default pipeline, also update Frame.embedding for backwards compat
     if pipeline_id == "clip_vitb32":
-        frame.embedding = json.dumps(embedding_result.embedding)
+        frame.embedding = json.dumps(embedding)
         frame.embedding_model = "CLIP"
-        frame.embedding_model_version = embedding_result.model_version
-        session.commit()
+        frame.embedding_model_version = model_version
+    
+    session.commit()
     
     return {
         "embedding": embedding_result.embedding,
