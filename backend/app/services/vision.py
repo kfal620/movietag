@@ -306,6 +306,7 @@ class SceneAttributePrediction:
     attribute: str
     value: str
     confidence: float
+    debug_info: dict[str, Any] | None = None
 
 
 def _normalize(vector: Iterable[float]) -> np.ndarray:
@@ -455,7 +456,7 @@ def _get_attribute_prototypes(session: Any, attribute: str) -> dict[str, Any]:
         tensor = torch.tensor(vectors)
         centroid = tensor.mean(dim=0)
         centroid = centroid / centroid.norm(dim=-1, keepdim=True)
-        prototypes[value] = centroid
+        prototypes[value] = (centroid, len(vectors))
 
     return prototypes
 
@@ -500,20 +501,35 @@ def classify_attributes_with_clip(image: Image.Image, session: Any | None = None
             
             # Prototype Integration
             proto_map = _get_attribute_prototypes(session, attribute)
-            if proto_map:
-                # We need to mix text similarity with visual prototype similarity
-                # Strategy: Validated visual examples are strong signals.
-                # If a concept has a prototype, we average the text score and prototype score.
-                for i, label in enumerate(labels):
-                    if label in proto_map:
-                        proto_vec = proto_map[label].to(components.device)
-                        # image_features (1, dim), proto_vec (dim)
-                        proto_sim = (image_features @ proto_vec.unsqueeze(0).T).squeeze(0).item()
-                        
-                        # Weighting: 60% text (general knowledge), 40% specific examples
-                        # We can tune this. If 40% is high enough, it shifts the decision.
-                        current_score = similarity[i].item()
-                        similarity[i] = 0.6 * current_score + 0.4 * proto_sim
+            
+            # Store debug info for each label
+            label_scores = []
+            
+            for i, label in enumerate(labels):
+                clip_score = similarity[i].item()
+                proto_score = None
+                proto_count = 0
+                
+                if label in proto_map:
+                    proto_vec, count = proto_map[label]
+                    proto_vec = proto_vec.to(components.device)
+                    # image_features (1, dim), proto_vec (dim)
+                    proto_sim = (image_features @ proto_vec.unsqueeze(0).T).squeeze(0).item()
+                    
+                    # Weighting: 60% text (general knowledge), 40% specific examples
+                    new_score = 0.6 * clip_score + 0.4 * proto_sim
+                    similarity[i] = new_score
+                    
+                    proto_score = proto_sim
+                    proto_count = count
+                
+                label_scores.append({
+                    "label": label,
+                    "clip_score": clip_score,
+                    "prototype_score": proto_score,
+                    "prototype_count": proto_count,
+                    "final_score": similarity[i].item()
+                })
 
             # Handle multi-label for 'lighting'
             if attribute == "lighting":
@@ -528,22 +544,33 @@ def classify_attributes_with_clip(image: Image.Image, session: Any | None = None
                     score = float(similarity[idx])
                     if score < threshold:
                         break
+                    
+                    # Find debug info for this label
+                    lbl = labels[idx]
+                    d_info = next((x for x in label_scores if x["label"] == lbl), None)
+                    
                     predictions.append(
                         SceneAttributePrediction(
                             attribute=attribute,
-                            value=labels[idx],
+                            value=lbl,
                             confidence=round(score, 3),
+                            debug_info={"selected": d_info, "candidates": label_scores}
                         )
                     )
             else:
                 # Single-label: argmax
                 best_idx = similarity.argmax().item()
                 best_score = float(similarity[best_idx])
+                
+                lbl = labels[best_idx]
+                d_info = next((x for x in label_scores if x["label"] == lbl), None)
+                
                 predictions.append(
                     SceneAttributePrediction(
                         attribute=attribute,
-                        value=labels[best_idx],
+                        value=lbl,
                         confidence=round(best_score, 3),
+                        debug_info={"selected": d_info, "candidates": label_scores}
                     )
                 )
 
@@ -573,10 +600,12 @@ def predict_scene_attributes(
             for entry in payload.get("attributes", []):
                 try:
                     predictions.append(
+
                         SceneAttributePrediction(
                             attribute=entry["attribute"],
                             value=entry["value"],
                             confidence=float(entry.get("confidence", 0.0)),
+                            debug_info=entry.get("debug_info"),
                         )
                     )
                 except Exception:

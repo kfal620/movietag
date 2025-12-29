@@ -68,4 +68,5 @@ export type Frame = {
   capturedAt?: string | null;
   embeddingModel?: string | null;
   embeddingModelVersion?: string | null;
+  analysisLog?: Record<string, any> | null;
 };

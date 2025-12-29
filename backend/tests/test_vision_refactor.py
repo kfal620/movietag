@@ -120,7 +120,7 @@ def test_classify_attributes_with_prototypes(mock_clip_components):
         # We want to return { "top_light": proto_vec } when attribute="lighting"
         def get_protos_side_effect(session, attribute):
             if attribute == "lighting":
-                return {"top_light": proto_vec}
+                return {"top_light": (proto_vec, 10)}
             return {}
             
         mock_get_protos.side_effect = get_protos_side_effect
@@ -136,3 +136,29 @@ def test_classify_attributes_with_prototypes(mock_clip_components):
         top_light = next((r for r in lighting_results if r.value == "top_light"), None)
         assert top_light is not None
         assert abs(top_light.confidence - 0.4) < 0.01
+
+def test_debug_info_structure(mock_clip_components):
+    """Test that debug_info is populated correctly."""
+    from PIL import Image
+    img = Image.new("RGB", (100, 100))
+    
+    with patch("torch.no_grad"):
+        results = vision.classify_attributes_with_clip(img)
+        
+    for r in results:
+        if r.attribute == "dominant_color":
+            continue
+        assert r.debug_info is not None
+        assert "selected" in r.debug_info
+        assert "candidates" in r.debug_info
+        
+        selected = r.debug_info["selected"]
+        assert selected["label"] == r.value
+        assert abs(selected["final_score"] - r.confidence) < 0.002
+        
+        candidates = r.debug_info["candidates"]
+        assert len(candidates) > 0
+        for c in candidates:
+            assert "clip_score" in c
+            assert "prototype_score" in c
+            assert "final_score" in c

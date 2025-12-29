@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { ActorDetection, Frame, Prediction, SceneAttribute, TmdbSearchResult } from "../lib/types";
+import { AnalysisLogModal } from "./AnalysisLogModal";
 
 type Props = {
   frame?: Frame;
@@ -35,6 +36,7 @@ export function FrameEditModal({
   const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [coreMessage, setCoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showLog, setShowLog] = useState(false);
 
   // -- Override/Tags State --
   const [overrideTitle, setOverrideTitle] = useState("");
@@ -324,6 +326,32 @@ export function FrameEditModal({
             <p style={{ color: "var(--muted)", margin: 0, marginBottom: "1rem" }}>
               Status: {frame.status.replace("_", " ")}
             </p>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto" }}>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={runVisionAnalysis}
+                disabled={analyzing}
+                style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
+              >
+                {analyzing ? "Queuing..." : "Run Vision Analysis"}
+              </button>
+              {frame.analysisLog && (
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => setShowLog(true)}
+                  style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
+                >
+                  View Log
+                </button>
+              )}
+            </div>
+            {coreMessage && (
+              <p style={{ marginTop: "0.25rem", fontSize: "0.85rem", color: coreMessage.type === "success" ? "var(--success)" : "var(--danger)" }}>
+                {coreMessage.text}
+              </p>
+            )}
           </div>
         </div>
 
@@ -391,21 +419,6 @@ export function FrameEditModal({
                   />
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={runVisionAnalysis}
-                    disabled={analyzing}
-                  >
-                    {analyzing ? "Queuing..." : "Run Vision Analysis"}
-                  </button>
-                  {coreMessage && (
-                    <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: coreMessage.type === "success" ? "var(--success)" : "var(--danger)" }}>
-                      {coreMessage.text}
-                    </p>
-                  )}
-                </div>
               </div>
 
               <label className="label" htmlFor="filePath" style={{ marginTop: "1rem" }}>File path</label>
@@ -705,6 +718,7 @@ export function FrameEditModal({
           </button>
         </div>
       </div>
-    </div>
+      {showLog && <AnalysisLogModal frame={frame} onClose={() => setShowLog(false)} />}
+    </div >
   );
 }

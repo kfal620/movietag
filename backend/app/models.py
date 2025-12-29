@@ -143,6 +143,7 @@ class Frame(Base):
     predicted_shot_id = Column(String(100), nullable=True)
     shot_timestamp = Column(String(100), nullable=True)
     scene_summary = Column(Text, nullable=True)
+    analysis_log = Column(JSON, nullable=True)
     metadata_source = Column(String(100), nullable=True)
     file_path = Column(String(512), nullable=False)
     storage_uri = Column(String(512), nullable=True)

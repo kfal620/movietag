@@ -680,6 +680,27 @@ def detect_scene_attributes(
 
             applied = _persist_scene_attributes(session, frame, predictions)
 
+            # Persist detailed analysis log
+            analysis_log: dict[str, Any] = {}
+            for p in predictions:
+                if p.debug_info:
+                    # For multi-label (lighting), we might have multiple entries.
+                    # We should restructure the log to handle this.
+                    # Existing structure in vision.py is one prediction per label for lighting.
+                    # If we just key by attribute, we overwrite. 
+                    # Let's check if attribute exists.
+                    if p.attribute in analysis_log:
+                         # Ensure it's a list if multiple
+                        existing = analysis_log[p.attribute]
+                        if isinstance(existing, list):
+                            existing.append(p.debug_info)
+                        else:
+                            analysis_log[p.attribute] = [existing, p.debug_info]
+                    else:
+                        analysis_log[p.attribute] = p.debug_info
+            
+            frame.analysis_log = analysis_log
+
             frame.failure_reason = None
             frame.status = "analyzed"
             session.add(frame)
