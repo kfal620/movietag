@@ -338,7 +338,7 @@ export default function Home() {
         "Content-Type": "application/json",
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
-      body: JSON.stringify({ attributes: attributes.map((attr) => ({ attribute: attr.attribute, value: attr.value, confidence: attr.confidence })) }),
+      body: JSON.stringify({ attributes: attributes.map((attr) => ({ attribute: attr.attribute, value: attr.value, confidence: attr.confidence, is_verified: attr.isVerified })) }),
     }).then(() => mutate());
   };
 
