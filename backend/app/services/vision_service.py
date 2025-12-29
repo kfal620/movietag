@@ -319,12 +319,19 @@ def _load_frame_image(frame: Frame, session: Session) -> Image.Image:
     Raises:
         ValueError: If image cannot be loaded
     """
-    # Try to load from storage
+    from io import BytesIO
+    import requests
+    
+    # Try to load from signed URL (primary method for S3/storage)
     if frame.storage_uri:
         try:
-            image_bytes = storage.get_frame_image_bytes(frame.storage_uri)
-            from io import BytesIO
-            return Image.open(BytesIO(image_bytes))
+            # Generate a fresh signed URL
+            signed_url = storage.resolve_frame_signed_url(frame, expires_in=600)
+            if signed_url:
+                # Download via HTTP
+                response = requests.get(signed_url, timeout=30)
+                response.raise_for_status()
+                return Image.open(BytesIO(response.content))
         except Exception as e:
             logger.warning(
                 "Failed to load from storage %s: %s",
@@ -335,7 +342,16 @@ def _load_frame_image(frame: Frame, session: Session) -> Image.Image:
     # Try to load from file_path as fallback
     if frame.file_path:
         try:
-            return Image.open(frame.file_path)
+            # Check if it's an absolute path or needs to be resolved
+            from pathlib import Path
+            file_path = Path(frame.file_path)
+            if file_path.exists():
+                return Image.open(file_path)
+            else:
+                # Try with /app prefix (Docker container path)
+                docker_path = Path("/app") / frame.file_path
+                if docker_path.exists():
+                    return Image.open(docker_path)
         except Exception as e:
             logger.warning(
                 "Failed to load from file_path %s: %s",
