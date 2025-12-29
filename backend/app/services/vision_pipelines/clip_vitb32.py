@@ -216,7 +216,7 @@ class ClipViTB32Pipeline(VisionPipeline):
                     # Integrate prototypes if session provided
                     proto_map = {}
                     if session is not None:
-                        proto_map = _get_attribute_prototypes(session, attribute)
+                        proto_map = _get_attribute_prototypes(session, attribute, pipeline_id="clip_vitb32")
                     
                     # Store debug info
                     label_scores = []

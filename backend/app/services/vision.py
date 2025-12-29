@@ -407,29 +407,55 @@ SCENE_ATTRIBUTE_PROMPTS = {
 }
 
 
-def _get_attribute_prototypes(session: Any, attribute: str) -> dict[str, Any]:
-    """Fetch verified frame embeddings for an attribute and compute class centroids."""
+def _get_attribute_prototypes(session: Any, attribute: str, pipeline_id: str = "clip_vitb32") -> dict[str, Any]:
+    """Fetch verified frame embeddings for an attribute and compute class centroids.
+    
+    Args:
+        session: Database session
+        attribute: Name of the attribute (e.g., "interior_exterior")
+        pipeline_id: Pipeline ID to get embeddings from (default: "clip_vitb32")
+        
+    Returns:
+        Dict mapping attribute values to (centroid_tensor, count) tuples
+    """
     if not session:
         return {}
     
     # Avoid circular imports
     try:
-        from app.models import Frame, SceneAttribute
+        from app.models import Frame, FrameEmbedding, SceneAttribute
     except ImportError:
         return {}
 
-    # Query verified attributes
+    # Query verified attributes with embeddings from the specified pipeline
+    # First try the new FrameEmbedding table
     rows = (
-        session.query(SceneAttribute.value, Frame.embedding)
+        session.query(SceneAttribute.value, FrameEmbedding.embedding)
         .join(Frame, Frame.id == SceneAttribute.frame_id)
+        .join(FrameEmbedding, FrameEmbedding.frame_id == Frame.id)
         .filter(
             SceneAttribute.attribute == attribute,
             SceneAttribute.is_verified == True,
-            Frame.embedding.isnot(None),
+            FrameEmbedding.pipeline_id == pipeline_id,
+            FrameEmbedding.embedding.isnot(None),
         )
-        .limit(100)  # Limit to avoid slow queries, maybe prioritize recent?
+        .limit(100)  # Limit to avoid slow queries
         .all()
     )
+    
+    # Fallback: if no results and using default pipeline, try Frame.embedding
+    if not rows and pipeline_id == "clip_vitb32":
+        rows = (
+            session.query(SceneAttribute.value, Frame.embedding)
+            .join(Frame, Frame.id == SceneAttribute.frame_id)
+            .filter(
+                SceneAttribute.attribute == attribute,
+                SceneAttribute.is_verified == True,
+                Frame.embedding.isnot(None),
+            )
+            .limit(100)
+            .all()
+        )
 
     if not rows:
         return {}
