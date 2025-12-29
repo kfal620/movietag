@@ -320,18 +320,38 @@ def _load_frame_image(frame: Frame, session: Session) -> Image.Image:
         ValueError: If image cannot be loaded
     """
     from io import BytesIO
-    import requests
     
-    # Try to load from signed URL (primary method for S3/storage)
+    # Try to load from S3/MinIO storage using boto3 directly
     if frame.storage_uri:
         try:
-            # Generate a fresh signed URL
-            signed_url = storage.resolve_frame_signed_url(frame, expires_in=600)
-            if signed_url:
-                # Download via HTTP
-                response = requests.get(signed_url, timeout=30)
-                response.raise_for_status()
-                return Image.open(BytesIO(response.content))
+            # Parse the storage URI to get bucket and key
+            from app.core.settings import get_settings
+            settings = get_settings()
+            
+            storage_uri = frame.storage_uri
+            if storage_uri.startswith("s3://"):
+                remainder = storage_uri.removeprefix("s3://")
+                if "/" in remainder:
+                    bucket, key = remainder.split("/", 1)
+                else:
+                    bucket = settings.storage_frames_bucket
+                    key = remainder
+            else:
+                bucket = settings.storage_frames_bucket
+                key = storage_uri.lstrip("/")
+            
+            if bucket and key:
+                # Use boto3 to download directly (works inside Docker)
+                from app.services.storage import _build_s3_client
+                client = _build_s3_client(settings.storage_endpoint_url)
+                
+                # Download object to BytesIO
+                buffer = BytesIO()
+                client.download_fileobj(bucket, key, buffer)
+                buffer.seek(0)
+                
+                logger.info("Loaded image from storage: %s/%s", bucket, key)
+                return Image.open(buffer)
         except Exception as e:
             logger.warning(
                 "Failed to load from storage %s: %s",
@@ -346,11 +366,13 @@ def _load_frame_image(frame: Frame, session: Session) -> Image.Image:
             from pathlib import Path
             file_path = Path(frame.file_path)
             if file_path.exists():
+                logger.info("Loaded image from file path: %s", file_path)
                 return Image.open(file_path)
             else:
                 # Try with /app prefix (Docker container path)
                 docker_path = Path("/app") / frame.file_path
                 if docker_path.exists():
+                    logger.info("Loaded image from Docker path: %s", docker_path)
                     return Image.open(docker_path)
         except Exception as e:
             logger.warning(
@@ -360,5 +382,6 @@ def _load_frame_image(frame: Frame, session: Session) -> Image.Image:
             )
     
     raise ValueError(
-        f"Could not load image for frame {frame.id} from storage or filesystem"
+        f"Could not load image for frame {frame.id} from storage or filesystem. "
+        f"storage_uri={frame.storage_uri}, file_path={frame.file_path}"
     )
