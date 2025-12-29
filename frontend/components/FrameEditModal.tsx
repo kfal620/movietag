@@ -167,7 +167,7 @@ export function FrameEditModal({
                 });
                 if (frameRes.ok) {
                   const newFrame = await frameRes.json();
-                  setLocalFrame(newFrame);
+                  setLocalFrame({ ...newFrame, predictions: localFrame?.predictions || [] });
                   setCoreMessage({ type: "success", text: "Analysis complete." });
                 }
                 setAnalyzing(false);
