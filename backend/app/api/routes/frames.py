@@ -65,6 +65,7 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
         "predicted_shot_id": frame.predicted_shot_id,
         "shot_timestamp": frame.shot_timestamp,
         "scene_summary": frame.scene_summary,
+        "analysisLog": frame.analysis_log,
         "metadata_source": frame.metadata_source,
         "file_path": frame.file_path,
         "storage_uri": frame.storage_uri,
