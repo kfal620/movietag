@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -84,7 +84,7 @@ class OpenClipViTL14Pipeline(VisionPipeline):
     def __init__(self):
         """Initialize the OpenCLIP ViT-L/14 pipeline."""
         self._loaded = False
-        self._error: str | None = None
+        self._error: Optional[str] = None
 
     def get_metadata(self) -> PipelineMetadata:
         """Return metadata about this pipeline."""
@@ -173,7 +173,7 @@ class OpenClipViTL14Pipeline(VisionPipeline):
             raise RuntimeError(f"Embedding extraction failed: {e}") from e
 
     def embed_images_batch(
-        self, images: list[Image.Image], batch_size: int | None = None
+        self, images: list[Image.Image], batch_size: Optional[int] = None
     ) -> list[EmbeddingResult]:
         """Extract embeddings for multiple images in batches.
         
@@ -243,9 +243,9 @@ class OpenClipViTL14Pipeline(VisionPipeline):
 
     def score_attributes(
         self,
-        image: Image.Image | None = None,
-        embedding: list[float] | None = None,
-        session: Any | None = None,
+        image: Optional[Image.Image] = None,
+        embedding: Optional[list[float]] = None,
+        session: Optional[Any] = None,
     ) -> list[AttributeScore]:
         """Score scene attributes using ViT-L/14 zero-shot classification.
         

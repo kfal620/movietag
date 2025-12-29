@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .base import PipelineMetadata, VisionPipeline
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 class PipelineRegistry:
     """Singleton registry for vision pipelines."""
 
-    _instance: PipelineRegistry | None = None
-    _pipelines: dict[str, VisionPipeline]
+    _instance: Optional['PipelineRegistry'] = None
+    _pipelines: dict[str, 'VisionPipeline']
 
     def __new__(cls) -> PipelineRegistry:
         if cls._instance is None:

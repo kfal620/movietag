@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ def analyze_frame(
     frame_id: int,
     pipeline_id: str,
     force: bool = False,
-    session: Session | None = None,
+    session: Optional[Session] = None,
 ) -> dict[str, Any]:
     """Analyze a frame with a specified vision pipeline.
     
@@ -273,7 +273,7 @@ def get_frame_embeddings(
     frame_id: int,
     pipeline_id: str,
     session: Session,
-) -> dict[str, Any] | None:
+) -> Optional[dict[str, Any]]:
     """Retrieve stored embeddings for a frame + pipeline.
     
     Args:

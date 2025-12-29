@@ -6,7 +6,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -23,7 +23,7 @@ class PipelineMetadata:
     input_resolution: int
     device: str
     dtype: str
-    version: str | None = None
+    version: Optional[str] = None
     loaded: bool = False
 
 
@@ -32,7 +32,7 @@ class EmbeddingResult:
     """Result of embedding extraction."""
 
     embedding: list[float]
-    model_version: str | None
+    model_version: Optional[str]
     computed_at: datetime
 
 
@@ -43,7 +43,7 @@ class AttributeScore:
     attribute: str
     value: str
     confidence: float
-    debug_info: dict[str, Any] | None = None
+    debug_info: Optional[dict[str, Any]] = None
 
 
 class VisionPipeline(ABC):
@@ -84,9 +84,9 @@ class VisionPipeline(ABC):
     @abstractmethod
     def score_attributes(
         self,
-        image: Image.Image | None = None,
-        embedding: list[float] | None = None,
-        session: Any | None = None,
+        image: Optional[Image.Image] = None,
+        embedding: Optional[list[float]] = None,
+        session: Optional[Any] = None,
     ) -> list[AttributeScore]:
         """Score scene attributes for an image.
         

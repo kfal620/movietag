@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -72,7 +72,7 @@ class ClipViTB32Pipeline(VisionPipeline):
     def __init__(self):
         """Initialize the CLIP ViT-B/32 pipeline."""
         self._loaded = False
-        self._error: str | None = None
+        self._error: Optional[str] = None
 
     def get_metadata(self) -> PipelineMetadata:
         """Return metadata about this pipeline."""
@@ -162,9 +162,9 @@ class ClipViTB32Pipeline(VisionPipeline):
 
     def score_attributes(
         self,
-        image: Image.Image | None = None,
-        embedding: list[float] | None = None,
-        session: Any | None = None,
+        image: Optional[Image.Image] = None,
+        embedding: Optional[list[float]] = None,
+        session: Optional[Any] = None,
     ) -> list[AttributeScore]:
         """Score scene attributes using CLIP zero-shot classification.
         
