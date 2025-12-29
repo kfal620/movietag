@@ -406,7 +406,62 @@ SCENE_ATTRIBUTE_PROMPTS = {
 }
 
 
-def classify_attributes_with_clip(image: Image.Image) -> list[SceneAttributePrediction]:
+def _get_attribute_prototypes(session: Any, attribute: str) -> dict[str, Any]:
+    """Fetch verified frame embeddings for an attribute and compute class centroids."""
+    if not session:
+        return {}
+    
+    # Avoid circular imports
+    try:
+        from app.models import Frame, SceneAttribute
+    except ImportError:
+        return {}
+
+    # Query verified attributes
+    rows = (
+        session.query(SceneAttribute.value, Frame.embedding)
+        .join(Frame, Frame.id == SceneAttribute.frame_id)
+        .filter(
+            SceneAttribute.attribute == attribute,
+            SceneAttribute.is_verified == True,
+            Frame.embedding.isnot(None),
+        )
+        .limit(100)  # Limit to avoid slow queries, maybe prioritize recent?
+        .all()
+    )
+
+    if not rows:
+        return {}
+
+    torch = _lazy_import_torch()
+    clusters: dict[str, list[list[float]]] = {}
+    
+    for value, embedding_json in rows:
+        try:
+            embedding = json.loads(embedding_json)
+            if not embedding:
+                continue
+            if value not in clusters:
+                clusters[value] = []
+            clusters[value].append(embedding)
+        except Exception:
+            continue
+            
+    # Compute centroids
+    prototypes: dict[str, Any] = {}
+    for value, vectors in clusters.items():
+        if not vectors:
+            continue
+        tensor = torch.tensor(vectors)
+        centroid = tensor.mean(dim=0)
+        centroid = centroid / centroid.norm(dim=-1, keepdim=True)
+        prototypes[value] = centroid
+
+    return prototypes
+
+
+
+def classify_attributes_with_clip(image: Image.Image, session: Any | None = None) -> list[SceneAttributePrediction]:
     """Run zero-shot classification using the local CLIP model."""
     torch = _lazy_import_torch()
     # Use default model settings
@@ -443,6 +498,23 @@ def classify_attributes_with_clip(image: Image.Image) -> list[SceneAttributePred
             # shape: (1, embed_dim) @ (num_classes, embed_dim).T -> (1, num_classes)
             similarity = (image_features @ text_features.T).squeeze(0)
             
+            # Prototype Integration
+            proto_map = _get_attribute_prototypes(session, attribute)
+            if proto_map:
+                # We need to mix text similarity with visual prototype similarity
+                # Strategy: Validated visual examples are strong signals.
+                # If a concept has a prototype, we average the text score and prototype score.
+                for i, label in enumerate(labels):
+                    if label in proto_map:
+                        proto_vec = proto_map[label].to(components.device)
+                        # image_features (1, dim), proto_vec (dim)
+                        proto_sim = (image_features @ proto_vec.unsqueeze(0).T).squeeze(0).item()
+                        
+                        # Weighting: 60% text (general knowledge), 40% specific examples
+                        # We can tune this. If 40% is high enough, it shifts the decision.
+                        current_score = similarity[i].item()
+                        similarity[i] = 0.6 * current_score + 0.4 * proto_sim
+
             # Handle multi-label for 'lighting'
             if attribute == "lighting":
                 # Multi-label strategy: select top K or threshold?
@@ -482,7 +554,7 @@ def classify_attributes_with_clip(image: Image.Image) -> list[SceneAttributePred
 
 
 def predict_scene_attributes(
-    image: Image.Image, service_url: str | None = None
+    image: Image.Image, service_url: str | None = None, session: Any | None = None
 ) -> list[SceneAttributePrediction]:
     """Run production scene classifiers using CLIP zero-shot locally or via service."""
     if service_url:
@@ -516,7 +588,7 @@ def predict_scene_attributes(
 
     # Local Fallback (now using CLIP instead of heuristics)
     try:
-        return classify_attributes_with_clip(image)
+        return classify_attributes_with_clip(image, session=session)
     except Exception:
         logger.exception("Local CLIP classification failed")
         return []

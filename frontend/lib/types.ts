@@ -16,6 +16,7 @@ export type SceneAttribute = {
   attribute: string;
   value: string;
   confidence?: number;
+  isVerified?: boolean;
 };
 
 export type ActorDetection = {

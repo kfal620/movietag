@@ -87,6 +87,7 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
                 "attribute": attr.attribute,
                 "value": attr.value,
                 "confidence": attr.confidence,
+                "is_verified": attr.is_verified,
             }
             for attr in frame.scene_attributes
         ],
@@ -456,6 +457,7 @@ class SceneAttributePayload(BaseModel):
     attribute: str
     value: str
     confidence: float | None = None
+    is_verified: bool = False
 
 
 class SceneAttributeUpdateRequest(BaseModel):
@@ -483,6 +485,7 @@ def replace_scene_attributes(
                 attribute=attr.attribute,
                 value=attr.value,
                 confidence=attr.confidence,
+                is_verified=attr.is_verified,
             )
         )
 

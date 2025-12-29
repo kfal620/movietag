@@ -86,3 +86,53 @@ def test_lighting_multi_label_logic(mock_clip_components):
 
 
 
+
+def test_classify_attributes_with_prototypes(mock_clip_components):
+    """Test that prototypes boost the score of an attribute."""
+    from PIL import Image
+    img = Image.new("RGB", (100, 100))
+    
+    # Mock text embeddings: orthogonal to image (dim 1)
+    # Shape: (8, 77) -> (8, 512)
+    def encode_text_side_effect(tokens):
+        res = torch.zeros((tokens.shape[0], 512))
+        res[:, 1] = 1.0 # Orthogonal to image (which is in dim 0)
+        return res
+        
+    mock_clip_components.model.encode_text.side_effect = encode_text_side_effect
+    
+    # Mock image embedding: unit vector in dimension 0
+    # Shape: (1, 512)
+    with patch("app.services.vision._get_attribute_prototypes") as mock_get_protos:
+        # Create a prototype for "top_light" that matches the image perfect (dim 0)
+        proto_vec = torch.zeros(512)
+        proto_vec[0] = 1.0
+        
+        # Determine image embedding to also be dim 0
+        def encode_image_side_effect(img_tensor):
+            vec = torch.zeros((1, 512))
+            vec[0, 0] = 1.0
+            return vec
+        
+        mock_clip_components.model.encode_image.side_effect = encode_image_side_effect
+        
+        # The function calls _get_attribute_prototypes(session, attribute)
+        # We want to return { "top_light": proto_vec } when attribute="lighting"
+        def get_protos_side_effect(session, attribute):
+            if attribute == "lighting":
+                return {"top_light": proto_vec}
+            return {}
+            
+        mock_get_protos.side_effect = get_protos_side_effect
+        
+        with patch("torch.no_grad"):
+            results = vision.classify_attributes_with_clip(img, session=MagicMock())
+            
+        # Text score = 0. Prototype match = 1.0. Mixed = 0.6*0 + 0.4*1 = 0.4
+        # Threshold logic in lighting: max(0.2, best*0.85). Best is 0.4.
+        lighting_results = [r for r in results if r.attribute == "lighting"]
+        
+        # "top_light" should be present with confidence ~0.4
+        top_light = next((r for r in lighting_results if r.value == "top_light"), None)
+        assert top_light is not None
+        assert abs(top_light.confidence - 0.4) < 0.01

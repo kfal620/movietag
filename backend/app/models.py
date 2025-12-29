@@ -1,6 +1,7 @@
 """SQLAlchemy models for core domain objects."""
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -231,6 +232,7 @@ class SceneAttribute(Base):
     attribute = Column(String(100), nullable=False)
     value = Column(String(255), nullable=False)
     confidence = Column(Float, nullable=True)
+    is_verified = Column(Boolean, default=False, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

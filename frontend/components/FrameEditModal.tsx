@@ -155,7 +155,7 @@ export function FrameEditModal({
   const updateSceneRow = (index: number, key: keyof SceneAttribute, value: string) => {
     setSceneRows((prev) => {
       const next = [...prev];
-      const updated = { ...next[index], [key]: value };
+      const updated = { ...next[index], [key]: value, isVerified: true };
       if (key === "confidence") {
         const parsed = Number(value);
         updated.confidence = Number.isNaN(parsed) ? undefined : parsed;
@@ -164,7 +164,7 @@ export function FrameEditModal({
       return next;
     });
   };
-  const addSceneRow = () => setSceneRows((prev) => [...prev, { attribute: "", value: "" }]);
+  const addSceneRow = () => setSceneRows((prev) => [...prev, { attribute: "", value: "", isVerified: true }]);
   const removeSceneRow = (index: number) => setSceneRows((prev) => prev.filter((_, idx) => idx !== index));
 
   // -- Actor Handlers --
@@ -476,14 +476,29 @@ export function FrameEditModal({
             <div className="animate-fade-in">
               {sceneRows.map((row, index) => (
                 <div key={index} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", marginBottom: "0.5rem" }}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, position: "relative" }}>
                     <input
                       className="input"
                       value={row.attribute}
                       onChange={(event) => updateSceneRow(index, "attribute", event.target.value)}
                       placeholder="Attribute"
-                      style={{ fontSize: "0.9rem" }}
+                      style={{ fontSize: "0.9rem", paddingLeft: row.isVerified ? "2rem" : undefined }}
                     />
+                    {row.isVerified && (
+                      <span
+                        title="Verified by user"
+                        style={{
+                          position: "absolute",
+                          left: "0.5rem",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          color: "var(--success)",
+                          cursor: "help"
+                        }}
+                      >
+                        ✓
+                      </span>
+                    )}
                   </div>
                   <div style={{ flex: 1 }}>
                     <input
