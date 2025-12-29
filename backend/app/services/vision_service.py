@@ -162,34 +162,40 @@ def analyze_frame(
         attribute_log = {}
         for score in attribute_scores:
             attr_name = score.attribute
-            if attr_name not in attribute_log:
-                attribute_log[attr_name] = {
-                    "selected": None,
-                    "candidates": []
+            
+            # The debug_info from pipelines contains {selected: {...}, candidates: [...]}
+            # We need to extract all candidates for this attribute
+            if score.debug_info and "candidates" in score.debug_info:
+                # Use the full candidate list from debug_info
+                if attr_name not in attribute_log:
+                    attribute_log[attr_name] = {
+                        "selected": score.debug_info.get("selected"),
+                        "candidates": score.debug_info.get("candidates", [])
+                    }
+                else:
+                    # Merge candidates if multiple scores for same attribute (e.g., lighting)
+                    attribute_log[attr_name]["candidates"].extend(score.debug_info.get("candidates", []))
+            else:
+                # Fallback: create minimal entry
+                if attr_name not in attribute_log:
+                    attribute_log[attr_name] = {
+                        "selected": None,
+                        "candidates": []
+                    }
+                
+                score_entry = {
+                    "label": score.value,
+                    "clip_score": score.confidence,
+                    "prototype_score": None,
+                    "prototype_count": 0,
+                    "final_score": score.confidence,
                 }
-            
-            # Add this score to candidates
-            score_entry = {
-                "label": score.value,
-                "clip_score": score.confidence,  # This will be overridden if debug_info exists
-                "prototype_score": None,
-                "prototype_count": 0,
-                "final_score": score.confidence,
-            }
-            
-            # Extract debug info if available
-            if score.debug_info:
-                score_entry["clip_score"] = score.debug_info.get("clip_score", score.confidence)
-                score_entry["prototype_score"] = score.debug_info.get("prototype_score")
-                score_entry["prototype_count"] = score.debug_info.get("prototype_count", 0)
-                score_entry["final_score"] = score.debug_info.get("final_score", score.confidence)
-            
-            attribute_log[attr_name]["candidates"].append(score_entry)
-            
-            # Set the highest scoring one as "selected"
-            if (attribute_log[attr_name]["selected"] is None or 
-                score_entry["final_score"] > attribute_log[attr_name]["selected"]["final_score"]):
-                attribute_log[attr_name]["selected"] = score_entry
+                
+                attribute_log[attr_name]["candidates"].append(score_entry)
+                
+                if (attribute_log[attr_name]["selected"] is None or 
+                    score_entry["final_score"] > attribute_log[attr_name]["selected"]["final_score"]):
+                    attribute_log[attr_name]["selected"] = score_entry
         
         # Add metadata to the log
         analysis_log = {
