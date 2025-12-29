@@ -30,146 +30,188 @@ def analyze_frame(
 ) -> dict[str, Any]:
     """Analyze a frame with a specified vision pipeline.
     
-    This is the main orchestration function that:
-    1. Checks for cached embeddings/attributes
-    2. If not cached or force=True, loads image and runs pipeline
-    3. Stores results in database
-    4. Returns embeddings + attributes
-    
     Args:
-        frame_id: Database ID of frame to analyze
-        pipeline_id: ID of vision pipeline to use
+        frame_id: Frame database ID
+        pipeline_id: ID of the pipeline to use (e.g. "clip_vitb32", "openclip_vitl14")
         force: If True, recompute even if cached
-        session: Database session
+        session: Database session (creates one if not provided)
         
     Returns:
         Dict with:
-            - embedding: list[float]
+            - embedding: list of floats
             - embedding_dimension: int
-            - attributes: list[dict] with attribute predictions
-            - cached: bool - whether result was from cache
-            - embed_time: float - seconds to compute embedding (if not cached)
-            - attribute_time: float - seconds to score attributes (if not cached)
+            - attributes: list of AttributeScore dicts
+            - cached: bool
+            - embed_time: float (if computed)
+            - attribute_time: float (if computed)
             
     Raises:
         ValueError: If frame not found or image cannot be loaded
-        KeyError: If pipeline_id is invalid
         RuntimeError: If analysis fails
     """
+    from app.models import Frame, SceneAttribute
+    
+    # Create session if needed
+    should_close = False
     if session is None:
-        from app.db import get_db
-        session = next(get_db())
+        session = SessionLocal()
+        should_close = True
     
-    # Check if frame exists
-    frame = session.query(Frame).filter(Frame.id == frame_id).first()
-    if not frame:
-        raise ValueError(f"Frame {frame_id} not found")
-    
-    # Check for cached embedding
-    cached_embedding = None
-    if not force:
-        cached = (
-            session.query(FrameEmbedding)
-            .filter(
-                FrameEmbedding.frame_id == frame_id,
-                FrameEmbedding.pipeline_id == pipeline_id,
-            )
-            .first()
+    try:
+        # Get pipeline
+        pipeline = get_pipeline(pipeline_id)
+        if pipeline is None:
+            raise ValueError(f"Pipeline '{pipeline_id}' not found")
+        
+        # Get frame
+        frame = session.get(Frame, frame_id)
+        if frame is None:
+            raise ValueError(f"Frame {frame_id} not found")
+        
+        # Check cache
+        if not force:
+            cached = get_frame_embeddings(frame_id, pipeline_id, session)
+            if cached:
+                logger.info(
+                    "Using cached embeddings for frame %d with pipeline %s",
+                    frame_id,
+                    pipeline_id,
+                )
+                # Get attributes from database
+                attributes = (
+                    session.query(SceneAttribute)
+                    .filter(SceneAttribute.frame_id == frame_id)
+                    .all()
+                )
+                
+                return {
+                    "embedding": cached["embedding"],
+                    "embedding_dimension": len(cached["embedding"]),
+                    "attributes": [
+                        {
+                            "attribute": attr.attribute,
+                            "value": attr.value,
+                            "confidence": attr.confidence,
+                            "is_verified": attr.is_verified,
+                        }
+                        for attr in attributes
+                    ],
+                    "cached": True,
+                }
+        
+        # Load image
+        try:
+            image = _load_frame_image(frame, session)
+        except Exception as e:
+            logger.error("Failed to load image for frame %d", frame_id)
+            raise ValueError(f"Failed to load image: {e}") from e
+        
+        # Compute embedding
+        logger.info(
+            "Computing embedding for frame %d with pipeline %s",
+            frame_id,
+            pipeline_id,
         )
-        if cached:
-            logger.info(
-                "Cache hit for frame %d with pipeline %s",
-                frame_id,
-                pipeline_id,
+        embed_start = time.time()
+        try:
+            embedding_result = pipeline.embed_image(image)
+        except Exception as e:
+            logger.error("Failed to compute embedding for frame %d", frame_id)
+            raise RuntimeError(f"Embedding computation failed: {e}") from e
+        embed_time = time.time() - embed_start
+        
+        # Store embedding
+        store_frame_embedding(
+            frame_id=frame_id,
+            pipeline_id=pipeline_id,
+            embedding=embedding_result.embedding,
+            model_version=embedding_result.model_version,
+            session=session,
+        )
+        
+        # Score attributes
+        logger.info("Scoring attributes for frame %d", frame_id)
+        attr_start = time.time()
+        try:
+            attribute_scores = pipeline.score_attributes(
+                image=image,
+                embedding=embedding_result.embedding,
+                session=session,
             )
-            cached_embedding = json.loads(cached.embedding)
-    
-    # If cached and not forcing, get attributes from DB
-    if cached_embedding is not None and not force:
-        # Get existing attributes for this frame
-        # Note: We don't store pipeline_id with SceneAttribute yet,
-        # so we assume attributes correspond to most recent analysis
-        attributes = (
-            session.query(SceneAttribute)
-            .filter(SceneAttribute.frame_id == frame_id)
-            .all()
+        except Exception as e:
+            logger.error("Failed to score attributes for frame %d", frame_id)
+            raise RuntimeError(f"Attribute scoring failed: {e}") from e
+        attr_time = time.time() - attr_start
+        
+        # Store attributes in database
+        _store_attributes(frame_id, attribute_scores, session)
+        
+        # Create detailed analysis log
+        pipeline_metadata = pipeline.get_metadata()
+        analysis_log = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_metadata.name,
+            "model_id": pipeline_metadata.model_id,
+            "device": pipeline_metadata.device,
+            "embedding": {
+                "dimension": len(embedding_result.embedding),
+                "model_version": embedding_result.model_version,
+                "compute_time_sec": embed_time,
+            },
+            "attributes": {
+                "compute_time_sec": attr_time,
+                "scores": [
+                    {
+                        "attribute": score.attribute,
+                        "value": score.value,
+                        "confidence": score.confidence,
+                        "debug_info": score.debug_info,
+                    }
+                    for score in attribute_scores
+                ],
+            },
+        }
+        
+        # Update frame with analysis log
+        frame.analysis_log = analysis_log
+        session.add(frame)
+        session.commit()
+        
+        logger.info(
+            "Analysis complete for frame %d: embed=%.2fs, attr=%.2fs",
+            frame_id,
+            embed_time,
+            attr_time,
         )
         
         return {
-            "embedding": cached_embedding,
-            "embedding_dimension": len(cached_embedding),
+            "embedding": embedding_result.embedding,
+            "embedding_dimension": len(embedding_result.embedding),
             "attributes": [
                 {
-                    "attribute": attr.attribute,
-                    "value": attr.value,
-                    "confidence": attr.confidence,
-                    "is_verified": attr.is_verified,
+                    "attribute": score.attribute,
+                    "value": score.value,
+                    "confidence": score.confidence,
+                    "is_verified": False,
                 }
-                for attr in attributes
+                for score in attribute_scores
             ],
-            "cached": True,
+            "cached": False,
+            "embed_time": embed_time,
+            "attribute_time": attr_time,
         }
     
-    # Need to compute - load image
-    try:
-        image = _load_frame_image(frame, session)
-    except Exception as e:
-        logger.exception("Failed to load image for frame %d", frame_id)
-        raise ValueError(f"Failed to load image: {e}") from e
-    
-    # Get pipeline
-    pipeline = get_pipeline(pipeline_id)
-    logger.info(
-        "Analyzing frame %d with pipeline %s (force=%s)",
-        frame_id,
-        pipeline_id,
-        force,
-    )
-    
-    # Extract embedding
-    start_time = time.time()
-    try:
-        embedding_result = pipeline.embed_image(image)
-        embed_time = time.time() - start_time
-        logger.info(
-            "Embedded frame %d in %.2fs (dim=%d)",
-            frame_id,
-            embed_time,
-            len(embedding_result.embedding),
-        )
-    except Exception as e:
-        logger.exception("Failed to embed frame %d", frame_id)
-        raise RuntimeError(f"Embedding extraction failed: {e}") from e
-    
-    # Score attributes
-    start_time = time.time()
-    try:
-        attribute_scores = pipeline.score_attributes(
-            embedding=embedding_result.embedding,
-            session=session,
-        )
-        attribute_time = time.time() - start_time
-        logger.info(
-            "Scored %d attributes for frame %d in %.2fs",
-            len(attribute_scores),
-            frame_id,
-            attribute_time,
-        )
-    except Exception as e:
-        logger.exception("Failed to score attributes for frame %d", frame_id)
-        raise RuntimeError(f"Attribute scoring failed: {e}") from e
-    
-    # Store embedding
-    store_frame_embedding(
-        frame_id=frame_id,
-        pipeline_id=pipeline_id,
-        embedding=embedding_result.embedding,
-        model_version=embedding_result.model_version or "unknown",
-        session=session,
-    )
-    
-    # Store attributes (replace existing for this frame)
-    # First delete old attributes
+    finally:
+        if should_close:
+            session.close()
+
+
+def _store_attributes(frame_id: int, attribute_scores: list, session: Session) -> None:
+    """Helper to store attribute scores in the database."""
+    from app.models import SceneAttribute
+
+    # First delete old attributes for this frame
     session.query(SceneAttribute).filter(
         SceneAttribute.frame_id == frame_id
     ).delete()

@@ -175,6 +175,7 @@ export function FrameEditModal({
 
       const result = await response.json();
 
+      // Show success message with timing info
       setCoreMessage({
         type: "success",
         text: result.cached
@@ -182,14 +183,26 @@ export function FrameEditModal({
           : `Analysis complete (${result.embed_time?.toFixed(2)}s embed, ${result.attribute_time?.toFixed(2)}s attr)`
       });
 
-      // Refresh the frame to get updated attributes
+      // Refresh the frame to get all updated data (including analysis_log)
       const frameRes = await fetch(`/api/frames/${localFrame.id}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
       });
 
       if (frameRes.ok) {
-        const newFrame = await frameRes.json();
-        setLocalFrame({ ...newFrame, predictions: localFrame?.predictions || [] });
+        const newFrameData = await frameRes.json();
+
+        // Update local frame with all new data
+        const updatedFrame = {
+          ...newFrameData,
+          predictions: localFrame?.predictions || []
+        };
+        setLocalFrame(updatedFrame);
+
+        // Update scene attributes in the Scene tab
+        setSceneRows(updatedFrame.sceneAttributes || updatedFrame.scene_attributes || []);
+
+        // The analysis_log should now be available for the "View Log" button
+        // which checks for localFrame.analysisLog
       }
 
     } catch (error) {
