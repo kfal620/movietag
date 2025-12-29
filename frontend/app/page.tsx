@@ -519,6 +519,7 @@ export default function Home() {
       source: "vision",
     });
     setAnalysisMessage(`Queued analysis for frame #${frameId}.`);
+    return payload.job_id;
   };
 
   const triggerVisionAnalysis = async () => {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 import asyncio
 import json
 import logging
@@ -44,11 +44,11 @@ logger = logging.getLogger(__name__)
 
 
 class FrameFilters(BaseModel):
-    movie_id: Optional[int] = None
-    tag: Optional[list[str]] = None
-    status: Optional[str] = None
-    cast_member_id: Optional[int] = None
-    time_of_day: Optional[str] = None
+    movie_id: int | None = None
+    tag: list[str] | None = None
+    status: str | None = None
+    cast_member_id: int | None = None
+    time_of_day: str | None = None
     limit: int = 20
     offset: int = 0
     sort: str = "-created_at"
@@ -65,7 +65,6 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
         "predicted_shot_id": frame.predicted_shot_id,
         "shot_timestamp": frame.shot_timestamp,
         "scene_summary": frame.scene_summary,
-        "analysisLog": frame.analysis_log,
         "metadata_source": frame.metadata_source,
         "file_path": frame.file_path,
         "storage_uri": frame.storage_uri,

@@ -12,7 +12,7 @@ type Props = {
   onSaveScene: (frameId: number, attributes: SceneAttribute[]) => void;
   onSaveActors: (frameId: number, detections: ActorDetection[]) => void;
   onAssignTmdb?: (frameId: number, tmdbId: number) => Promise<void>;
-  onRunAnalysis?: (frameId: number) => Promise<void>;
+  onRunAnalysis?: (frameId: number) => Promise<string>;
   authToken?: string;
 };
 
@@ -30,7 +30,12 @@ export function FrameEditModal({
   onRunAnalysis,
   authToken,
 }: Props) {
+  const [localFrame, setLocalFrame] = useState<Frame | undefined>(frame);
   const [activeTab, setActiveTab] = useState<Tab>("core");
+
+  useEffect(() => {
+    setLocalFrame(frame);
+  }, [frame]);
 
   // -- Core Metadata State --
   const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
@@ -123,12 +128,12 @@ export function FrameEditModal({
   }, [frame, isOpen, authToken]);
 
   const selectedPrediction = useMemo(() => {
-    if (!frame) return undefined;
-    return frame.predictions.find(
+    if (!localFrame) return undefined;
+    return localFrame.predictions.find(
       (prediction) =>
         `${prediction.source}-${prediction.title}` === selectedModelPrediction,
     );
-  }, [frame, selectedModelPrediction]);
+  }, [localFrame, selectedModelPrediction]);
 
   // -- Core Handlers --
   const updateMetadata = (key: keyof Frame, value: string) => {
@@ -136,7 +141,7 @@ export function FrameEditModal({
   };
 
   const runVisionAnalysis = async () => {
-    if (!frame) return;
+    if (!localFrame) return;
     if (!onRunAnalysis) {
       setCoreMessage({ type: "error", text: "Analysis unconfigured." });
       return;
@@ -144,11 +149,50 @@ export function FrameEditModal({
     setAnalyzing(true);
     setCoreMessage(null);
     try {
-      await onRunAnalysis(frame.id);
-      setCoreMessage({ type: "success", text: "Vision analysis queued." });
+      const taskId = await onRunAnalysis(localFrame.id);
+      setCoreMessage({ type: "success", text: "Analysis running..." });
+
+      // Poll for completion
+      if (taskId && typeof taskId === 'string') {
+        const poll = setInterval(async () => {
+          try {
+            const res = await fetch(`/api/tasks/${taskId}`); // Was /api/frames/tasks/ which might be wrong, checking routes
+            if (res.ok) {
+              const status = await res.json();
+              if (status.status === 'done') { // TaskRecord uses 'done', 'failed'. Check page.tsx logic
+                clearInterval(poll);
+                // Refresh frame
+                const frameRes = await fetch(`/api/frames/${localFrame.id}`, {
+                  headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
+                });
+                if (frameRes.ok) {
+                  const newFrame = await frameRes.json();
+                  setLocalFrame(newFrame);
+                  setCoreMessage({ type: "success", text: "Analysis complete." });
+                }
+                setAnalyzing(false);
+              } else if (status.status === 'failed') {
+                clearInterval(poll);
+                setCoreMessage({ type: "error", text: "Analysis failed." });
+                setAnalyzing(false);
+              }
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 1000);
+
+        // Timeout after 30s
+        setTimeout(() => {
+          clearInterval(poll);
+          setAnalyzing(false);
+        }, 30000);
+      } else {
+        setAnalyzing(false);
+      }
+
     } catch (error) {
       setCoreMessage({ type: "error", text: error instanceof Error ? error.message : "Analysis failed to start." });
-    } finally {
       setAnalyzing(false);
     }
   };
@@ -249,11 +293,11 @@ export function FrameEditModal({
       setAssignMessage("Choose a movie result before confirming.");
       return;
     }
-    if (!onAssignTmdb || !frame) return;
+    if (!onAssignTmdb || !localFrame) return;
     setAssigning(true);
     setAssignMessage(null);
     try {
-      await onAssignTmdb(frame.id, selectedTmdbId);
+      await onAssignTmdb(localFrame.id, selectedTmdbId);
       setAssignMessage("Frame assigned to the selected movie.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Assignment failed";
@@ -264,24 +308,24 @@ export function FrameEditModal({
   };
 
   const handleSave = () => {
-    if (!frame) return;
+    if (!localFrame) return;
 
     // Save all changes
-    onSaveMetadata(frame.id, draftMetadata);
-    onSaveScene(frame.id, sceneRows.filter(r => r.attribute && r.value));
-    onSaveActors(frame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined));
+    onSaveMetadata(localFrame.id, draftMetadata);
+    onSaveScene(localFrame.id, sceneRows.filter(r => r.attribute && r.value));
+    onSaveActors(localFrame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined));
 
     // Apply override if selected
     if (selectedPrediction) {
-      onApplyOverride(frame.id, selectedPrediction);
+      onApplyOverride(localFrame.id, selectedPrediction);
     } else if (overrideTitle.trim()) {
-      onApplyOverride(frame.id, overrideTitle.trim());
+      onApplyOverride(localFrame.id, overrideTitle.trim());
     }
 
     onClose();
   };
 
-  if (!isOpen || !frame) return null;
+  if (!isOpen || !localFrame) return null;
 
   return (
     <div
@@ -318,13 +362,13 @@ export function FrameEditModal({
         <div style={{ display: "flex", padding: "1.5rem", borderBottom: "1px solid var(--border)" }}>
           <div style={{ flex: 1, marginRight: "1.5rem" }}>
             <div style={{ position: "relative", width: "100%", height: "300px", borderRadius: "12px", overflow: "hidden" }}>
-              <Image src={freshImageUrl || frame.imageUrl} alt={frame.movieTitle} fill style={{ objectFit: "cover" }} />
+              <Image src={freshImageUrl || localFrame.imageUrl} alt={localFrame.movieTitle} fill style={{ objectFit: "cover" }} />
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <h2 style={{ margin: 0, marginBottom: "0.5rem" }}>{frame.movieTitle}</h2>
+            <h2 style={{ margin: 0, marginBottom: "0.5rem" }}>{localFrame.movieTitle}</h2>
             <p style={{ color: "var(--muted)", margin: 0, marginBottom: "1rem" }}>
-              Status: {frame.status.replace("_", " ")}
+              Status: {localFrame.status.replace("_", " ")}
             </p>
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto" }}>
               <button
@@ -334,9 +378,9 @@ export function FrameEditModal({
                 disabled={analyzing}
                 style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
               >
-                {analyzing ? "Queuing..." : "Run Vision Analysis"}
+                {analyzing ? "Analyzing..." : "Run Vision Analysis"}
               </button>
-              {frame.analysisLog && (
+              {localFrame.analysisLog && (
                 <button
                   type="button"
                   className="button button--ghost"
@@ -454,7 +498,7 @@ export function FrameEditModal({
                 onChange={(event) => setSelectedModelPrediction(event.target.value)}
               >
                 <option value="">Select prediction...</option>
-                {frame.predictions.map((prediction) => (
+                {localFrame.predictions.map((prediction) => (
                   <option key={`${prediction.source}-${prediction.title}`} value={`${prediction.source}-${prediction.title}`}>
                     {prediction.title} ({(prediction.confidence * 100).toFixed(1)}% · {prediction.source})
                   </option>
@@ -718,7 +762,7 @@ export function FrameEditModal({
           </button>
         </div>
       </div>
-      {showLog && <AnalysisLogModal frame={frame} onClose={() => setShowLog(false)} />}
+      {showLog && localFrame && <AnalysisLogModal frame={localFrame} onClose={() => setShowLog(false)} />}
     </div >
   );
 }
