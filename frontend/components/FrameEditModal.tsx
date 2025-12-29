@@ -164,7 +164,7 @@ export function FrameEditModal({
         body: JSON.stringify({
           frame_id: localFrame.id,
           pipeline_id: selectedPipeline,
-          force: false,
+          force: true,  // Always run fresh analysis
         }),
       });
 
