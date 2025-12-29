@@ -151,3 +151,22 @@ def download_to_path(storage_uri: str, destination: str) -> None:
     bucket, key = bucket_key
     client = _build_s3_client(get_settings().storage_endpoint_url)
     client.download_file(bucket, key, destination)
+
+
+def list_bucket_keys(bucket: str | None = None) -> list[str]:
+    """List all object keys in a bucket."""
+    settings = get_settings()
+    resolved_bucket = bucket or settings.storage_frames_bucket
+    if not resolved_bucket:
+        return []
+
+    client = _build_s3_client(settings.storage_endpoint_url)
+    keys: list[str] = []
+    
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=resolved_bucket):
+        if "Contents" in page:
+            for obj in page["Contents"]:
+                keys.append(obj["Key"])
+                
+    return keys

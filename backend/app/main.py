@@ -19,6 +19,15 @@ def create_application() -> FastAPI:
     app.include_router(vision.router_vision, prefix=api_prefix)
 
 
+    @app.on_event("startup")
+    async def on_startup() -> None:
+        """Trigger S3 synchronization on startup."""
+        from app.tasks.frames import sync_s3_frames
+        
+        # Fire and forget
+        sync_s3_frames.delay()
+
+
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
         return {"message": "Framegrab Tagger backend is running", "docs_url": "/docs"}

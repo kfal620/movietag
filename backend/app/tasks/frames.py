@@ -23,7 +23,7 @@ from app.db import SessionLocal
 from app.integrations.tmdb import TMDBIngestor
 from app.models import ActorDetection, Frame, FrameTag, Movie, SceneAttribute, Tag
 from app.services.film_matcher import FilmMatcher
-from app.services.storage import download_to_path
+from app.services.storage import download_to_path, list_bucket_keys
 from app.services.vision import (
     SceneAttributePrediction,
     cosine_similarity,
@@ -824,6 +824,63 @@ def detect_actor_faces(frame_id: int, session_factory: SessionFactory | None = N
                 path.unlink()
             except Exception:
                 logger.warning("Could not cleanup face detection temp file for frame %s", frame_id)
+
+
+@celery_app.task(name="frames.sync_s3")
+def sync_s3_frames(session_factory: SessionFactory | None = None) -> dict[str, Any]:
+    """Check for new frames in S3 that are not yet in the database."""
+    settings = get_settings()
+    bucket = settings.storage_frames_bucket
+    
+    if not bucket:
+        return {"status": "skipped", "reason": "No frames bucket configured"}
+
+    # 1. List all keys in S3
+    try:
+        s3_keys = list_bucket_keys(bucket)
+    except Exception:
+        logger.exception("Failed to list S3 keys for synchronization")
+        return {"status": "error", "reason": "S3 listing failed"}
+
+    # 2. Get all known storage_uris from DB
+    # We construct the expected URI format for comparison
+    # URI format: s3://{bucket}/{key}
+    
+    with _session_scope(session_factory) as session:
+        existing_uris = {
+            row[0] 
+            for row in session.query(Frame.storage_uri)
+            .filter(Frame.storage_uri.isnot(None))
+            .all()
+        }
+
+    triggered = 0
+    errors = 0
+    
+    for key in s3_keys:
+        # Construct the URI for this key
+        uri = f"s3://{bucket}/{key}"
+        
+        # If this URI is not in our known list, trigger an import
+        if uri not in existing_uris:
+            try:
+                # We assume the file name as the "file_path" for reference
+                # import_frame will handle downloading it since we provide storage_uri
+                import_frame.delay(
+                    file_path=key, 
+                    storage_uri=uri
+                )
+                triggered += 1
+            except Exception:
+                logger.exception("Failed to trigger import for %s", uri)
+                errors += 1
+
+    return {
+        "status": "completed",
+        "s3_total": len(s3_keys),
+        "triggered_imports": triggered,
+        "errors": errors,
+    }
 
 
 def _match_frame(
