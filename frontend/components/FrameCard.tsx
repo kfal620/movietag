@@ -21,7 +21,7 @@ const statusBadge = {
 export function FrameCard({ frame, isActive, onSelect, selectedForExport, onToggleSelect, onEdit }: Props) {
   const badge = statusBadge[frame.status] ?? statusBadge.pending;
   const timeOfDay = frame.sceneAttributes?.find((attr) => attr.attribute === "time_of_day")?.value;
-  const environment = frame.sceneAttributes?.find((attr) => attr.attribute === "environment")?.value;
+  const interiorExterior = frame.sceneAttributes?.find((attr) => attr.attribute === "interior_exterior")?.value;
   const actorsCount = frame.actors?.length ?? 0;
 
   return (
@@ -79,10 +79,10 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
         <div className="status-row">
           <div
             className={`status-dot ${frame.status === "confirmed" || frame.status === "analyzed"
-                ? "status-dot--success"
-                : frame.status === "needs_analyzing"
-                  ? "status-dot--danger"
-                  : "status-dot--warning"
+              ? "status-dot--success"
+              : frame.status === "needs_analyzing"
+                ? "status-dot--danger"
+                : "status-dot--warning"
               }`}
           />
           {frame.tags?.length ? (
@@ -93,7 +93,7 @@ export function FrameCard({ frame, isActive, onSelect, selectedForExport, onTogg
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
           {timeOfDay ? <span className="chip chip--muted">{timeOfDay}</span> : null}
-          {environment ? <span className="chip chip--muted">{environment}</span> : null}
+          {interiorExterior ? <span className="chip chip--muted">{interiorExterior}</span> : null}
           <span className="chip chip--muted">{actorsCount} actors</span>
         </div>
       </div>
