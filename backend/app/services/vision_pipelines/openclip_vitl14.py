@@ -310,14 +310,26 @@ class OpenClipViTL14Pipeline(VisionPipeline):
                         if label in proto_map:
                             proto_vec, count = proto_map[label]
                             proto_vec = proto_vec.to(device)
-                            proto_sim = (image_features @ proto_vec.unsqueeze(0).T).squeeze(0).item()
                             
-                            # Weight: 60% text, 40% prototypes
-                            new_score = 0.6 * clip_score + 0.4 * proto_sim
-                            similarity[i] = new_score
-                            
-                            proto_score = proto_sim
-                            proto_count = count
+                            # Check dimension compatibility before computing similarity
+                            if proto_vec.shape[0] == image_features.shape[1]:
+                                proto_sim = (image_features @ proto_vec.unsqueeze(0).T).squeeze(0).item()
+                                
+                                # Weight: 60% text, 40% prototypes
+                                new_score = 0.6 * clip_score + 0.4 * proto_sim
+                                similarity[i] = new_score
+                                
+                                proto_score = proto_sim
+                                proto_count = count
+                            else:
+                                # Skip prototype integration if dimensions don't match
+                                logger.debug(
+                                    "Skipping prototype for %s=%s: dimension mismatch (%d vs %d)",
+                                    attribute,
+                                    label,
+                                    proto_vec.shape[0],
+                                    image_features.shape[1],
+                                )
                         
                         label_scores.append({
                             "label": label,
