@@ -57,6 +57,8 @@ export function FrameEditModal({
   const [assigning, setAssigning] = useState(false);
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
 
+  const [freshImageUrl, setFreshImageUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (frame && isOpen) {
       // Core
@@ -94,8 +96,29 @@ export function FrameEditModal({
       setSelectedTmdbId(null);
       setSearchError(null);
       setAssignMessage(null);
+
+      // Refresh image URL if expired
+      setFreshImageUrl(null);
+      const fetchFreshFrame = async () => {
+        try {
+          const headers: HeadersInit = {};
+          if (authToken) {
+            headers["Authorization"] = `Bearer ${authToken}`;
+          }
+          const response = await fetch(`/api/frames/${frame.id}`, { headers });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.signed_url) {
+              setFreshImageUrl(data.signed_url);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to refresh frame URL", err);
+        }
+      };
+      fetchFreshFrame();
     }
-  }, [frame, isOpen]);
+  }, [frame, isOpen, authToken]);
 
   const selectedPrediction = useMemo(() => {
     if (!frame) return undefined;
@@ -293,7 +316,7 @@ export function FrameEditModal({
         <div style={{ display: "flex", padding: "1.5rem", borderBottom: "1px solid var(--border)" }}>
           <div style={{ flex: 1, marginRight: "1.5rem" }}>
             <div style={{ position: "relative", width: "100%", height: "300px", borderRadius: "12px", overflow: "hidden" }}>
-              <Image src={frame.imageUrl} alt={frame.movieTitle} fill style={{ objectFit: "cover" }} />
+              <Image src={freshImageUrl || frame.imageUrl} alt={frame.movieTitle} fill style={{ objectFit: "cover" }} />
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
