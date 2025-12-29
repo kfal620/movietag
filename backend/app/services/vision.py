@@ -366,10 +366,125 @@ def _dominant_colors(image: Image.Image, k: int = 3) -> list[SceneAttributePredi
     return predictions
 
 
+
+SCENE_ATTRIBUTE_PROMPTS = {
+    "time_of_day": {"day": "a photo taken during the day", "night": "a photo taken at night"},
+    "lighting": {
+        "hard_light": "hard light",
+        "soft_light": "soft light",
+        "top_light": "top light",
+        "silhouette": "silhouette",
+        "high_contrast": "high contrast",
+        "low_contrast": "low contrast",
+        "side_light": "side light",
+        "front_light": "front light",
+    },
+    "interior_exterior": {"interior": "interior view", "exterior": "exterior view"},
+    "environment": {
+        "urban": "urban environment",
+        "natural": "natural environment",
+        "underwater": "underwater scene",
+        "space": "outer space",
+    },
+    "emotion": {
+        "calm": "calm atmosphere",
+        "intense": "intense atmosphere",
+        "joyful": "joyful atmosphere",
+        "melancholic": "melancholic atmosphere",
+    },
+    "composition": {
+        "rule_of_thirds": "composition following rule of thirds",
+        "centered": "centered composition",
+        "symmetrical": "symmetrical composition",
+        "panoramic": "panoramic view",
+    },
+    "color_temperature": {
+        "warm": "warm color temperature",
+        "cool": "cool color temperature",
+        "neutral": "neutral color temperature",
+    },
+}
+
+
+def classify_attributes_with_clip(image: Image.Image) -> list[SceneAttributePrediction]:
+    """Run zero-shot classification using the local CLIP model."""
+    torch = _lazy_import_torch()
+    # Use default model settings
+    settings = None
+    try:
+        from app.core.settings import get_settings
+        settings = get_settings()
+    except Exception:
+        pass
+    
+    model_name = settings.clip_model_name if settings else "ViT-B-32"
+    pretrained = settings.clip_pretrained if settings else "openai"
+    components = get_clip_components(model_name, pretrained)
+
+    # 1. Encode Image
+    image_tensor = components.preprocess(image).unsqueeze(0).to(components.device)
+    with torch.no_grad():
+        image_features = components.model.encode_image(image_tensor)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+    predictions: list[SceneAttributePrediction] = []
+
+    # 2. Iterate over attributes and encode text prompts
+    # Note: In a high-throughput system, we would cache these text embeddings.
+    for attribute, options in SCENE_ATTRIBUTE_PROMPTS.items():
+        labels = list(options.keys())
+        prompts = list(options.values())
+        
+        text_tokens = components.tokenizer(prompts).to(components.device)
+        with torch.no_grad():
+            text_features = components.model.encode_text(text_tokens)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            
+            # shape: (1, embed_dim) @ (num_classes, embed_dim).T -> (1, num_classes)
+            similarity = (image_features @ text_features.T).squeeze(0)
+            
+            # Handle multi-label for 'lighting'
+            if attribute == "lighting":
+                # Multi-label strategy: select top K or threshold?
+                # Let's verify matches > 0.85 * best_score to capture close seconds
+                best_score = float(similarity.max())
+                threshold = max(0.2, best_score * 0.85)
+                
+                # Sort indices by score descending
+                sorted_indices = similarity.argsort(descending=True)
+                for idx in sorted_indices:
+                    score = float(similarity[idx])
+                    if score < threshold:
+                        break
+                    predictions.append(
+                        SceneAttributePrediction(
+                            attribute=attribute,
+                            value=labels[idx],
+                            confidence=round(score, 3),
+                        )
+                    )
+            else:
+                # Single-label: argmax
+                best_idx = similarity.argmax().item()
+                best_score = float(similarity[best_idx])
+                predictions.append(
+                    SceneAttributePrediction(
+                        attribute=attribute,
+                        value=labels[best_idx],
+                        confidence=round(best_score, 3),
+                    )
+                )
+
+    # 3. Add dominant colors (kept as it is distinct from semantic attributes but useful)
+    predictions.extend(_dominant_colors(image, k=3))
+    
+    return predictions
+
+
 def predict_scene_attributes(
     image: Image.Image, service_url: str | None = None
 ) -> list[SceneAttributePrediction]:
-    """Run production scene classifiers or fall back to lightweight heuristics."""
+    """Run production scene classifiers using CLIP zero-shot locally or via service."""
     if service_url:
         try:
             buffer = io.BytesIO()
@@ -397,66 +512,15 @@ def predict_scene_attributes(
             if predictions:
                 return predictions
         except Exception:
-            logger.exception("Scene attribute service failed, using heuristics instead")
+            logger.exception("Scene attribute service failed, falling back to local CLIP")
 
-    rgb = image.convert("RGB")
-    arr = np.asarray(rgb)
-    brightness = float(arr.mean() / 255)
-    saturation = float(np.std(arr) / 255)
-    height, width = arr.shape[:2]
-    aspect_ratio = width / max(1, height)
+    # Local Fallback (now using CLIP instead of heuristics)
+    try:
+        return classify_attributes_with_clip(image)
+    except Exception:
+        logger.exception("Local CLIP classification failed")
+        return []
 
-    def _score(center: float, spread: float = 0.25) -> float:
-        return max(0.05, 1.0 - abs(brightness - center) / spread)
-
-    time_of_day = "night" if brightness < 0.42 else "day"
-    lighting = "low_key" if brightness < 0.35 else "high_key"
-    environment = "interior" if saturation < 0.18 else "exterior"
-    if brightness < 0.3 and saturation < 0.12:
-        environment = "underwater"
-    vehicle_presence = "vehicle" if (np.mean(arr[:, :, 1]) / 255) > 0.4 and aspect_ratio > 1.2 else "no_vehicle"
-    if aspect_ratio > 2.1:
-        composition_tag = "panoramic"
-    elif aspect_ratio < 0.8:
-        composition_tag = "portrait_frame"
-    else:
-        composition_tag = "balanced_frame"
-
-    cool_strength = float(np.mean(arr[:, :, 2]) / 255)
-    warm_strength = float(np.mean(arr[:, :, 0]) / 255)
-    emotion = "calm" if cool_strength >= warm_strength else "intense"
-    location_type = "urban" if saturation > 0.25 else "natural"
-    if environment == "interior":
-        location_type = "interior"
-    composition_secondary = "rule_of_thirds" if saturation > 0.1 else "centered"
-
-    predictions: list[SceneAttributePrediction] = [
-        SceneAttributePrediction("time_of_day", time_of_day, round(_score(0.55), 3)),
-        SceneAttributePrediction("lighting", lighting, round(_score(0.5), 3)),
-        SceneAttributePrediction("environment", environment, round(0.6 + 0.4 * saturation, 3)),
-        SceneAttributePrediction("location_type", location_type, round(0.55 + 0.35 * saturation, 3)),
-        SceneAttributePrediction("composition", composition_tag, 0.62),
-        SceneAttributePrediction("composition", composition_secondary, 0.58),
-        SceneAttributePrediction("emotion", emotion, round(0.5 + 0.4 * brightness, 3)),
-        SceneAttributePrediction("vehicle_presence", vehicle_presence, round(0.45 + 0.45 * saturation, 3)),
-        SceneAttributePrediction(
-            "color_temperature",
-            "warm" if warm_strength >= cool_strength else "cool",
-            round(abs(warm_strength - cool_strength) + 0.5, 3),
-        ),
-        SceneAttributePrediction(
-            "saturation_level",
-            "rich" if saturation > 0.25 else "muted",
-            round(0.5 + 0.5 * saturation, 3),
-        ),
-        SceneAttributePrediction(
-            "lighting_style",
-            "backlit" if brightness < 0.35 and saturation > 0.25 else lighting,
-            round(0.55 + 0.35 * abs(0.5 - brightness), 3),
-        ),
-    ]
-    predictions.extend(_dominant_colors(image, k=3))
-    return predictions
 
 
 def get_vision_model_status() -> list[dict[str, Any]]:
