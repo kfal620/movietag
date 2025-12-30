@@ -380,24 +380,17 @@ SCENE_ATTRIBUTE_PROMPTS = {
         "side_light": "side light",
         "front_light": "front light",
     },
-    "interior_exterior": {"interior": "interior view", "exterior": "exterior view"},
-    "environment": {
-        "urban": "urban environment",
-        "natural": "natural environment",
-        "underwater": "underwater scene",
-        "space": "outer space",
-    },
+    "interior_exterior": {"interior": "interior view, inside", "exterior": "exterior view, outside"},
     "emotion": {
-        "calm": "calm atmosphere",
-        "intense": "intense atmosphere",
-        "joyful": "joyful atmosphere",
-        "melancholic": "melancholic atmosphere",
+        "calm": "calm atmosphere, calm expression",
+        "intense": "intense atmosphere, intense expression",
+        "joyful": "joyful atmosphere, joyful expression",
+        "melancholic": "melancholic atmosphere, melancholic expression",
     },
     "composition": {
-        "rule_of_thirds": "composition following rule of thirds",
+        "rule_of_thirds": "composition following rule of thirds, rule of thirds",
         "centered": "centered composition",
-        "symmetrical": "symmetrical composition",
-        "panoramic": "panoramic view",
+        "symmetrical": "symmetrical composition"
     },
     "color_temperature": {
         "warm": "warm color temperature",
