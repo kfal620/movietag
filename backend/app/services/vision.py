@@ -387,6 +387,17 @@ SCENE_ATTRIBUTE_PROMPTS = {
         "joyful": "joyful atmosphere, joyful expression",
         "melancholic": "melancholic atmosphere, melancholic expression",
     },
+    "shot type": {
+        "establishing": "establishing shot, wide shot",
+        "high_angle": "high angle shot",
+        "low_angle": "low angle shot",
+        "dutch_angle": "dutch angle shot, tilted camera, crooked horizon, crooked view",
+        "over_the_shoulder": "over the shoulder shot, shoulder in foreground, blurry person in foreground",
+        "medium_shot": "medium shot, waist up, ",
+        "clean_single": "single subject shot",
+        "2_shot": "two people in frame, two shot, 2 shot",
+        "3_shot": "three people in frame, three shot, 3 shot"
+    },
     "composition": {
         "rule_of_thirds": "composition following rule of thirds, rule of thirds",
         "centered": "centered composition",
