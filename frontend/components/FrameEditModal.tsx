@@ -348,20 +348,25 @@ export function FrameEditModal({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!localFrame) return;
 
-    // Save all changes
-    onSaveMetadata(localFrame.id, draftMetadata);
-    onSaveScene(localFrame.id, sceneRows.filter(r => r.attribute && r.value));
-    onSaveActors(localFrame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined));
+    // Collect all save operations as promises
+    const savePromises = [
+      onSaveMetadata(localFrame.id, draftMetadata),
+      onSaveScene(localFrame.id, sceneRows.filter(r => r.attribute && r.value)),
+      onSaveActors(localFrame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined)),
+    ];
 
     // Apply override if selected
     if (selectedPrediction) {
-      onApplyOverride(localFrame.id, selectedPrediction);
+      savePromises.push(onApplyOverride(localFrame.id, selectedPrediction));
     } else if (overrideTitle.trim()) {
-      onApplyOverride(localFrame.id, overrideTitle.trim());
+      savePromises.push(onApplyOverride(localFrame.id, overrideTitle.trim()));
     }
+
+    // Wait for all saves to complete before closing
+    await Promise.all(savePromises);
 
     onClose();
   };
