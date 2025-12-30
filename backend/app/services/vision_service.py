@@ -215,8 +215,9 @@ def analyze_frame(
             }
         }
         
-        # Update frame with analysis log
+        # Update frame with analysis log and status
         frame.analysis_log = analysis_log
+        frame.status = "analyzed"
         session.add(frame)
         session.commit()
         
@@ -283,7 +284,7 @@ def _store_attributes(
         frame.embedding_model = "CLIP"
         frame.embedding_model_version = model_version
     
-    session.commit()
+    # Don't commit here - let the caller handle the transaction
 
 
 def store_frame_embedding(
@@ -340,7 +341,7 @@ def store_frame_embedding(
             pipeline_id,
         )
     
-    session.commit()
+    # Don't commit here - let the caller handle the transaction
 
 
 def get_frame_embeddings(
