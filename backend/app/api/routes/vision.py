@@ -12,7 +12,7 @@ from app.core.auth import require_role
 from app.core.celery import celery_app
 from app.db import get_db
 from app.models import ActorDetection, Frame, FrameTag, SceneAttribute, Tag
-from app.services.vision import get_vision_model_status
+from app.services.vision import get_vision_model_status, SCENE_ATTRIBUTE_PROMPTS
 from app.tasks.vision import warmup_models_task
 
 logger = logging.getLogger(__name__)
@@ -183,3 +183,20 @@ def analyze_frame_endpoint(
         raise HTTPException(
             status_code=500, detail=f"Analysis failed: {str(e)}"
         ) from e
+
+
+@router_vision.get("/attribute-options")
+def get_attribute_options() -> dict[str, list[str]]:
+    """Get available options for each scene attribute type.
+    
+    Returns a mapping of attribute names to their available values
+    based on the SCENE_ATTRIBUTE_PROMPTS configuration.
+    
+    Returns:
+        Dict mapping attribute names to list of available values
+        Example: {"time_of_day": ["day", "night"], ...}
+    """
+    return {
+        attribute: list(options.keys())
+        for attribute, options in SCENE_ATTRIBUTE_PROMPTS.items()
+    }

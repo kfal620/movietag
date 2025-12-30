@@ -53,6 +53,7 @@ export function FrameEditModal({
 
   // -- Scene State --
   const [sceneRows, setSceneRows] = useState<SceneAttribute[]>([]);
+  const [attributeOptions, setAttributeOptions] = useState<Record<string, string[]>>({});
 
   // -- Actor State --
   const [actorRows, setActorRows] = useState<ActorDetection[]>([]);
@@ -127,6 +128,20 @@ export function FrameEditModal({
         }
       };
       fetchFreshFrame();
+
+      // Fetch attribute options
+      const fetchAttributeOptions = async () => {
+        try {
+          const response = await fetch('/api/vision/attribute-options');
+          if (response.ok) {
+            const data = await response.json();
+            setAttributeOptions(data);
+          }
+        } catch (err) {
+          console.error('Failed to fetch attribute options', err);
+        }
+      };
+      fetchAttributeOptions();
     }
   }, [frame, isOpen, authToken]);
 
@@ -646,13 +661,20 @@ export function FrameEditModal({
                     )}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <input
-                      className="input"
+                    <select
+                      className="select"
                       value={row.value}
                       onChange={(event) => updateSceneRow(index, "value", event.target.value)}
-                      placeholder="Value"
                       style={{ fontSize: "0.9rem" }}
-                    />
+                      disabled={!row.attribute || !attributeOptions[row.attribute]}
+                    >
+                      <option value="">Select value...</option>
+                      {row.attribute && attributeOptions[row.attribute]?.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ flex: 0.5 }}>
                     <input
