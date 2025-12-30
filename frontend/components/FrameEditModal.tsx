@@ -211,6 +211,9 @@ export function FrameEditModal({
         // Update scene attributes in the Scene tab
         setSceneRows(updatedFrame.sceneAttributes || updatedFrame.scene_attributes || []);
 
+        // Update the status in draftMetadata to reflect the backend change
+        setDraftMetadata((prev) => ({ ...prev, status: updatedFrame.status }));
+
         // The analysis_log should now be available for the "View Log" button
         // which checks for localFrame.analysisLog
       }

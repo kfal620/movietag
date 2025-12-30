@@ -39,3 +39,6 @@ frontend/.DS_Store
 .gitignore
 backend/.DS_Store
 backend/alembic/.DS_Store
+.DS_Store
+frontend/.DS_Store
+.DS_Store
