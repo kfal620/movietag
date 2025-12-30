@@ -90,11 +90,11 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
         <div className="meta-grid" style={{ marginTop: "0.8rem" }}>
           <div className="meta-box">
             <label>Assigned movie</label>
-            <strong>{frame.movieTitle || frame.predictedMovieTitle || "Unassigned"}</strong>
+            <strong>{frame.movieTitle || "Unassigned"}</strong>
           </div>
           <div className="meta-box">
             <label>Predicted match</label>
-            <strong>{frame.predictedMovieTitle || "—"}</strong>
+            <strong>{frame.predictions?.[0]?.title || "—"}</strong>
           </div>
           <div className="meta-box">
             <label>Confidence</label>
@@ -167,8 +167,8 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
                 result.poster_path && result.poster_path.startsWith("http")
                   ? result.poster_path
                   : result.poster_path
-                      ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
-                      : "/placeholder-thumbnail.svg";
+                    ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
+                    : "/placeholder-thumbnail.svg";
               return (
                 <div
                   key={result.tmdb_id}

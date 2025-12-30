@@ -145,16 +145,6 @@ export function FrameEditModal({
     }
   }, [frame, isOpen, authToken]);
 
-  // Separate effect to sync sceneRows when localFrame changes
-  // This ensures that when analysis updates localFrame, sceneRows gets updated too
-  // Handle both camelCase (sceneAttributes) and snake_case (scene_attributes)
-  useEffect(() => {
-    if (localFrame) {
-      const attributes = (localFrame as any).sceneAttributes || (localFrame as any).scene_attributes || [];
-      setSceneRows(attributes);
-    }
-  }, [localFrame]);
-
   const selectedPrediction = useMemo(() => {
     if (!localFrame) return undefined;
     return localFrame.predictions.find(
