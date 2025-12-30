@@ -634,6 +634,26 @@ export function FrameEditModal({
                 </div>
               )}
 
+              {/* Column Labels */}
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", paddingLeft: "0.25rem" }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                    Attribute
+                  </label>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                    Value
+                  </label>
+                </div>
+                <div style={{ flex: 0.5 }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                    Confidence Score
+                  </label>
+                </div>
+                <div style={{ width: "44px" }}>{/* Spacer for delete button */}</div>
+              </div>
+
               {sceneRows.map((row, index) => (
                 <div key={index} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", marginBottom: "0.5rem" }}>
                   <div style={{ flex: 1, position: "relative" }}>
