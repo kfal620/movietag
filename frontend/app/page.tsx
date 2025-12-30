@@ -324,34 +324,40 @@ export default function Home() {
     }
   };
 
-  const applyOverride = (frameId: number, prediction: Prediction | string) => {
+  const applyOverride = async (frameId: number, prediction: Prediction | string) => {
     const payload =
       typeof prediction === "string"
         ? { tags: [prediction] }
         : { tags: [prediction.title] };
-    fetch(`/api/frames/${frameId}/tags`, {
+    await fetch(`/api/frames/${frameId}/tags`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify(payload),
-    }).then(() => mutate());
+    });
+    // Wait for database transaction to be visible
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await mutate();
   };
 
-  const saveSceneAttributes = (frameId: number, attributes: SceneAttribute[]) => {
-    fetch(`/api/frames/${frameId}/scene-attributes`, {
+  const saveSceneAttributes = async (frameId: number, attributes: SceneAttribute[]) => {
+    await fetch(`/api/frames/${frameId}/scene-attributes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify({ attributes: attributes.map((attr) => ({ attribute: attr.attribute, value: attr.value, confidence: attr.confidence, is_verified: attr.isVerified })) }),
-    }).then(() => mutate());
+    });
+    // Wait for database transaction to be visible
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await mutate();
   };
 
-  const saveActorDetections = (frameId: number, actors: ActorDetection[]) => {
-    fetch(`/api/frames/${frameId}/actors`, {
+  const saveActorDetections = async (frameId: number, actors: ActorDetection[]) => {
+    await fetch(`/api/frames/${frameId}/actors`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -371,7 +377,10 @@ export default function Home() {
           pose_roll: actor.poseRoll,
         })),
       }),
-    }).then(() => mutate());
+    });
+    // Wait for database transaction to be visible
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await mutate();
   };
 
   const assignFrameToTmdb = async (frameId: number, tmdbId: number) => {
@@ -502,6 +511,8 @@ export default function Home() {
       },
       body: JSON.stringify(payload),
     });
+    // Wait for database transaction to be visible
+    await new Promise(resolve => setTimeout(resolve, 100));
     await mutate();
     setStorageMessage("Saved frame changes.");
   };
