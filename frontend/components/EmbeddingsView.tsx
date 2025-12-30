@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-import { FrameEmbeddingInfo, PrototypeInfo } from "../lib/types";
+import { FrameEmbeddingInfo } from "../lib/types";
 
 type Props = {
     authToken?: string;
@@ -47,7 +47,6 @@ export function EmbeddingsView({ authToken }: Props) {
     const [selectedPipeline, setSelectedPipeline] = useState<string | null>(null);
     const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<number | null>(null);
-    const [bulkDeleteFrameId, setBulkDeleteFrameId] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const { data: embeddingsData, mutate: mutateEmbeddings } = useSWR<EmbeddingsResponse>(
@@ -68,7 +67,7 @@ export function EmbeddingsView({ authToken }: Props) {
             return;
         }
 
-        if (!confirm(`Delete embedding for pipeline "${pipelineId}"? This will revert to default if available.`)) {
+        if (!confirm(`Delete embedding #${embeddingId}? This will revert to an older version if available.`)) {
             return;
         }
 
@@ -94,7 +93,7 @@ export function EmbeddingsView({ authToken }: Props) {
             if (result.warning) {
                 setMessage({ type: "error", text: result.warning });
             } else if (result.reverted) {
-                setMessage({ type: "success", text: `Reverted to default ${pipelineId} embedding` });
+                setMessage({ type: "success", text: `Reverted to older ${pipelineId} embedding` });
             } else {
                 setMessage({ type: "success", text: "Embedding deleted" });
             }
@@ -108,57 +107,14 @@ export function EmbeddingsView({ authToken }: Props) {
         }
     };
 
-    const handleBulkDelete = async (frameId: number) => {
-        if (!authToken) {
-            setMessage({ type: "error", text: "Authentication required" });
-            return;
-        }
-
-        if (!confirm(`Delete ALL embeddings for frame #${frameId}? This cannot be undone and will require re-analysis.`)) {
-            return;
-        }
-
-        setBulkDeleteFrameId(frameId);
-        setMessage(null);
-
-        try {
-            const response = await fetch(`/api/embeddings/frames/${frameId}/embeddings`, {
-                method: "DELETE",
-                headers: {
-                    Authorization: `Bearer ${authToken}`,
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(await response.text());
-            }
-
-            const result = await response.json();
-
-            await mutateEmbeddings();
-            setMessage({ type: "error", text: result.warning || "All embeddings deleted" });
-        } catch (error) {
-            setMessage({
-                type: "error",
-                text: error instanceof Error ? error.message : "Bulk delete failed",
-            });
-        } finally {
-            setBulkDeleteFrameId(null);
-        }
-    };
-
     const embeddings = embeddingsData?.items ?? [];
     const prototypes = prototypesData?.prototypes ?? [];
 
-    // Group embeddings by frame
-    const embeddingsByFrame = embeddings.reduce((acc, emb) => {
-        const frameId = emb.frame?.id ?? emb.frameId ?? 0;
-        if (!acc[frameId]) {
-            acc[frameId] = [];
-        }
-        acc[frameId].push(emb);
-        return acc;
-    }, {} as Record<number, EmbeddingListItem[]>);
+    // Filter embeddings
+    const filteredEmbeddings = embeddings.filter((emb) => {
+        if (selectedPipeline && emb.pipelineId !== selectedPipeline) return false;
+        return true;
+    });
 
     // Filter prototypes
     const filteredPrototypes = prototypes.filter((p) => {
@@ -166,8 +122,9 @@ export function EmbeddingsView({ authToken }: Props) {
         return true;
     });
 
-    // Get unique attributes for filter
+    // Get unique attributes and pipelines for filters
     const uniqueAttributes = Array.from(new Set(prototypes.map((p) => p.attribute)));
+    const uniquePipelines = Array.from(new Set(embeddings.map((e) => e.pipelineId)));
 
     return (
         <section className="panel" style={{ padding: "1.5rem", height: "100%" }}>
@@ -197,7 +154,7 @@ export function EmbeddingsView({ authToken }: Props) {
                 {/* Embeddings Table */}
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                        <h3 style={{ margin: 0 }}>Embeddings ({embeddingsData?.total ?? 0})</h3>
+                        <h3 style={{ margin: 0 }}>Individual Embeddings ({filteredEmbeddings.length})</h3>
                         <select
                             className="select"
                             value={selectedPipeline ?? ""}
@@ -205,7 +162,7 @@ export function EmbeddingsView({ authToken }: Props) {
                             style={{ width: "200px" }}
                         >
                             <option value="">All Pipelines</option>
-                            {Array.from(new Set(embeddings.map((e) => e.pipelineId))).map((pipeline) => (
+                            {uniquePipelines.map((pipeline) => (
                                 <option key={pipeline} value={pipeline}>
                                     {pipeline}
                                 </option>
@@ -217,87 +174,97 @@ export function EmbeddingsView({ authToken }: Props) {
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                             <thead style={{ position: "sticky", top: 0, background: "var(--surface)", zIndex: 1 }}>
                                 <tr>
+                                    <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>ID</th>
                                     <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Frame</th>
                                     <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Pipeline</th>
                                     <th style={{ padding: "0.75rem", textAlign: "center", borderBottom: "1px solid var(--border)" }}>Dimension</th>
-                                    <th style={{ padding: "0.75rem", textAlign: "center", borderBottom: "1px solid var(--border)" }}>Count</th>
+                                    <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Created</th>
                                     <th style={{ padding: "0.75rem", textAlign: "right", borderBottom: "1px solid var(--border)" }}>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {Object.entries(embeddingsByFrame)
-                                    .filter(([, frameEmbs]) =>
-                                        !selectedPipeline || frameEmbs.some((e) => e.pipelineId === selectedPipeline)
-                                    )
-                                    .map(([frameId, frameEmbs]) => {
-                                        const displayEmbs = selectedPipeline
-                                            ? frameEmbs.filter((e) => e.pipelineId === selectedPipeline)
-                                            : frameEmbs;
+                                {filteredEmbeddings.map((emb) => {
+                                    const frameId = emb.frame?.id ?? emb.frameId ?? 0;
+                                    const createdDate = new Date(emb.createdAt);
+                                    const isRecent = Date.now() - createdDate.getTime() < 24 * 60 * 60 * 1000;
 
-                                        return displayEmbs.map((emb, idx) => (
-                                            <tr key={emb.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                                                {idx === 0 && (
-                                                    <td
-                                                        rowSpan={displayEmbs.length}
-                                                        style={{ padding: "0.75rem", verticalAlign: "top" }}
-                                                    >
-                                                        <div>
-                                                            <div style={{ fontWeight: 500 }}>Frame #{frameId}</div>
-                                                            <div className="muted" style={{ fontSize: "0.85rem" }}>
-                                                                {emb.frame?.movie_title || "Unknown"}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                )}
-                                                <td style={{ padding: "0.75rem" }}>
+                                    return (
+                                        <tr key={emb.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                                            <td style={{ padding: "0.75rem" }}>
+                                                <code style={{ fontSize: "0.85rem", color: "var(--muted)" }}>#{emb.id}</code>
+                                            </td>
+                                            <td style={{ padding: "0.75rem" }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 500 }}>Frame #{frameId}</div>
+                                                    <div className="muted" style={{ fontSize: "0.85rem" }}>
+                                                        {emb.frame?.movie_title || "Unknown"}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: "0.75rem" }}>
+                                                <div>
                                                     <code style={{ fontSize: "0.85rem" }}>{emb.pipelineId}</code>
-                                                </td>
-                                                <td style={{ padding: "0.75rem", textAlign: "center" }}>{emb.dimension}</td>
-                                                {idx === 0 && (
-                                                    <td
-                                                        rowSpan={displayEmbs.length}
-                                                        style={{ padding: "0.75rem", textAlign: "center", verticalAlign: "top" }}
-                                                    >
-                                                        {frameEmbs.length}
-                                                    </td>
-                                                )}
-                                                {idx === 0 && (
-                                                    <td
-                                                        rowSpan={displayEmbs.length}
-                                                        style={{ padding: "0.75rem", textAlign: "right", verticalAlign: "top" }}
-                                                    >
-                                                        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                                                            <button
-                                                                className="button button--ghost"
-                                                                onClick={() => handleDelete(Number(frameId), emb.pipelineId, emb.id)}
-                                                                disabled={deletingId === emb.id}
-                                                                style={{ fontSize: "0.85rem", padding: "0.25rem 0.5rem", color: "var(--danger)" }}
-                                                            >
-                                                                {deletingId === emb.id ? "..." : "Delete"}
-                                                            </button>
-                                                            {frameEmbs.length > 1 && (
-                                                                <button
-                                                                    className="button button--ghost"
-                                                                    onClick={() => handleBulkDelete(Number(frameId))}
-                                                                    disabled={bulkDeleteFrameId === Number(frameId)}
-                                                                    style={{ fontSize: "0.85rem", padding: "0.25rem 0.5rem", color: "var(--danger)" }}
-                                                                    title="Delete all embeddings for this frame"
-                                                                >
-                                                                    {bulkDeleteFrameId === Number(frameId) ? "..." : "Delete All"}
-                                                                </button>
-                                                            )}
+                                                    {emb.modelVersion && (
+                                                        <div className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                                                            v{emb.modelVersion}
                                                         </div>
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        ));
-                                    })}
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                                                <span style={{
+                                                    padding: "0.25rem 0.5rem",
+                                                    borderRadius: "4px",
+                                                    background: "var(--surface)",
+                                                    fontSize: "0.85rem",
+                                                    fontFamily: "monospace"
+                                                }}>
+                                                    {emb.dimension}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: "0.75rem" }}>
+                                                <div style={{ fontSize: "0.85rem" }}>
+                                                    {createdDate.toLocaleDateString()}
+                                                    <div className="muted" style={{ fontSize: "0.75rem" }}>
+                                                        {createdDate.toLocaleTimeString()}
+                                                        {isRecent && (
+                                                            <span style={{
+                                                                marginLeft: "0.5rem",
+                                                                color: "var(--success)",
+                                                                fontSize: "0.75rem"
+                                                            }}>
+                                                                • New
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: "0.75rem", textAlign: "right" }}>
+                                                <button
+                                                    className="button button--ghost"
+                                                    onClick={() => handleDelete(frameId, emb.pipelineId, emb.id)}
+                                                    disabled={deletingId === emb.id}
+                                                    style={{ fontSize: "0.85rem", padding: "0.25rem 0.75rem", color: "var(--danger)" }}
+                                                    title={`Delete embedding #${emb.id}`}
+                                                >
+                                                    {deletingId === emb.id ? "Deleting..." : "Delete"}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
 
                         {embeddings.length === 0 && (
                             <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>
                                 No embeddings found. Analyze frames to generate embeddings.
+                            </div>
+                        )}
+
+                        {filteredEmbeddings.length === 0 && embeddings.length > 0 && (
+                            <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>
+                                No embeddings found for the selected filter.
                             </div>
                         )}
                     </div>
