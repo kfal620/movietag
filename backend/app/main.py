@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .api.routes import frames, health, movies, settings as settings_routes, tasks, vision
+from .api.routes import embeddings, frames, health, movies, settings as settings_routes, tasks, vision
 from .core.settings import get_settings
 
 
@@ -15,6 +15,7 @@ def create_application() -> FastAPI:
     app.include_router(movies.router, prefix=api_prefix)
     app.include_router(settings_routes.router, prefix=api_prefix)
     app.include_router(tasks.router, prefix=api_prefix)
+    app.include_router(embeddings.router, prefix=api_prefix)
     app.include_router(vision.router_models, prefix=api_prefix)
     app.include_router(vision.router_vision, prefix=api_prefix)
 

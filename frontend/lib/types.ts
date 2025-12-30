@@ -69,6 +69,7 @@ export type Frame = {
   embeddingModel?: string | null;
   embeddingModelVersion?: string | null;
   analysisLog?: Record<string, any> | null;
+  embeddings?: FrameEmbeddingInfo[];
 };
 
 export type VisionPipeline = {
@@ -102,4 +103,24 @@ export type AnalyzeFrameResponse = {
   cached: boolean;
   embed_time?: number;
   attribute_time?: number;
+};
+
+export type FrameEmbeddingInfo = {
+  id: number;
+  frameId?: number;
+  pipelineId: string;
+  pipelineName?: string;
+  dimension: number;
+  modelVersion?: string | null;
+  createdAt: string;
+  userEdited?: boolean;
+  isPipelineDefault?: boolean;
+};
+
+export type PrototypeInfo = {
+  attribute: string;
+  value: string;
+  count: number;
+  frameIds: number[];
+  avgInfluence?: number;
 };

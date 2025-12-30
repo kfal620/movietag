@@ -110,6 +110,25 @@ const navItems: SidebarItem[] = [
     ),
   },
   {
+    key: "embeddings",
+    label: "Embeddings",
+    description: "Visual prototypes",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-9h10v2H7v-2zm0 4h10v2H7v-2z"
+          fill="currentColor"
+          opacity="0.88"
+        />
+        <circle cx="12" cy="8" r="1.5" fill="currentColor" opacity="0.9" />
+        <circle cx="8" cy="12" r="1" fill="currentColor" opacity="0.8" />
+        <circle cx="16" cy="12" r="1" fill="currentColor" opacity="0.8" />
+        <circle cx="10" cy="16" r="1" fill="currentColor" opacity="0.7" />
+        <circle cx="14" cy="16" r="1" fill="currentColor" opacity="0.7" />
+      </svg>
+    ),
+  },
+  {
     key: "support",
     label: "Support",
     description: "Help center",

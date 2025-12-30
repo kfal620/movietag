@@ -56,6 +56,24 @@ class FrameFilters(BaseModel):
 
 def _serialize_frame(frame: Frame) -> dict[str, Any]:
     signed_url = resolve_frame_signed_url(frame)
+    
+    # Serialize embeddings
+    embeddings_list = []
+    for emb in frame.embeddings:
+        try:
+            embedding_data = json.loads(emb.embedding) if isinstance(emb.embedding, str) else emb.embedding
+            dimension = len(embedding_data) if embedding_data else 0
+        except Exception:
+            dimension = 0
+        
+        embeddings_list.append({
+            "id": emb.id,
+            "pipeline_id": emb.pipeline_id,
+            "dimension": dimension,
+            "model_version": emb.model_version,
+            "created_at": emb.created_at.isoformat() if emb.created_at else None,
+        })
+    
     return {
         "id": frame.id,
         "movie_id": frame.movie_id,
@@ -114,6 +132,7 @@ def _serialize_frame(frame: Frame) -> dict[str, Any]:
             }
             for detection in frame.actor_detections
         ],
+        "embeddings": embeddings_list,
     }
 
 
@@ -221,6 +240,7 @@ def lookup_frame(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
+            joinedload(Frame.embeddings),
         )
     )
 
@@ -379,6 +399,7 @@ def list_frames(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
+            joinedload(Frame.embeddings),
         )
         .outerjoin(Movie, Frame.movie_id == Movie.id)
     )
@@ -407,6 +428,7 @@ def get_frame(frame_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         joinedload(Frame.scene_attributes),
         joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
         joinedload(Frame.movie),
+        joinedload(Frame.embeddings),
     )
         .filter(Frame.id == frame_id)
         .one_or_none()
@@ -718,6 +740,7 @@ def export_frames(
             joinedload(Frame.scene_attributes),
             joinedload(Frame.actor_detections).joinedload(ActorDetection.cast_member),
             joinedload(Frame.movie),
+            joinedload(Frame.embeddings),
         )
         .filter(Frame.id.in_(payload.frame_ids))
         .all()

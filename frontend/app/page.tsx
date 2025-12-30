@@ -13,6 +13,7 @@ import { StorageExplorer } from "../components/StorageExplorer";
 import { Sidebar } from "../components/Sidebar";
 import { VisionModelsPanel } from "../components/VisionModelsPanel";
 import { FrameEditModal } from "../components/FrameEditModal";
+import { EmbeddingsView } from "../components/EmbeddingsView";
 
 
 const statusFilters: { label: string; value: Frame["status"] | "all" }[] = [
@@ -1136,6 +1137,7 @@ export default function Home() {
               </div>
             </div>
           ) : null}
+          {selectedView === "embeddings" && <EmbeddingsView authToken={authToken} />}
           {selectedView === "models" ? renderPlaceholder("Models", "Manage pipelines, versions, and rollout strategies for inference.") : null}
           {selectedView === "support" ? renderPlaceholder("Support", "Reach the help desk, docs, and operational runbooks.") : null}
         </div>
