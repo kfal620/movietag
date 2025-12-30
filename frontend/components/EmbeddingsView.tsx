@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import useSWR from "swr";
 
 type Props = {
@@ -53,11 +53,12 @@ const fetcher = async (url: string, token?: string) => {
 export function EmbeddingsView({ authToken }: Props) {
     const [verifiedOnly, setVerifiedOnly] = useState(false);
     const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null);
+    const [expandedFrames, setExpandedFrames] = useState<Set<number>>(new Set());
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const { data: attributesData, mutate: mutateAttributes } = useSWR<SceneAttributesResponse>(
-        [`/api/embeddings/scene-attributes?limit=200&verified_only=${verifiedOnly}${selectedAttribute ? `&attribute=${selectedAttribute}` : ''}`, authToken],
+        [`/api/embeddings/scene-attributes?limit=500&verified_only=${verifiedOnly}${selectedAttribute ? `&attribute=${selectedAttribute}` : ''}`, authToken],
         ([url, token]: [string, string]) => fetcher(url, token),
         { revalidateOnFocus: false }
     );
@@ -111,8 +112,34 @@ export function EmbeddingsView({ authToken }: Props) {
         }
     };
 
+    const toggleFrame = (frameId: number) => {
+        setExpandedFrames((prev) => {
+            const next = new Set(prev);
+            if (next.has(frameId)) {
+                next.delete(frameId);
+            } else {
+                next.add(frameId);
+            }
+            return next;
+        });
+    };
+
     const attributes = attributesData?.items ?? [];
     const prototypes = prototypesData?.prototypes ?? [];
+
+    // Group attributes by frame
+    const attributesByFrame = useMemo(() => {
+        const grouped: Record<number, SceneAttributeItem[]> = {};
+        attributes.forEach((attr) => {
+            if (!grouped[attr.frame_id]) {
+                grouped[attr.frame_id] = [];
+            }
+            grouped[attr.frame_id].push(attr);
+        });
+        return grouped;
+    }, [attributes]);
+
+    const frameIds = Object.keys(attributesByFrame).map(Number).sort((a, b) => b - a);
 
     // Get unique attribute types
     const uniqueAttributeTypes = Array.from(new Set(attributes.map((a) => a.attribute))).sort();
@@ -128,7 +155,7 @@ export function EmbeddingsView({ authToken }: Props) {
             <div style={{ marginBottom: "1.5rem" }}>
                 <h2 style={{ margin: 0, marginBottom: "0.5rem" }}>Scene Attributes & Prototypes</h2>
                 <p className="muted" style={{ margin: 0 }}>
-                    View all scene attribute values (time_of_day, interior_exterior, etc.), see which were user-edited, and manage visual prototypes
+                    View all scene attribute values, see which were user-edited, and manage visual prototypes
                 </p>
             </div>
 
@@ -151,7 +178,9 @@ export function EmbeddingsView({ authToken }: Props) {
                 {/* Scene Attributes Table */}
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", gap: "1rem", flexWrap: "wrap" }}>
-                        <h3 style={{ margin: 0 }}>Scene Attributes ({attributes.length})</h3>
+                        <h3 style={{ margin: 0 }}>
+                            Frames ({frameIds.length}) · Attributes ({attributes.length})
+                        </h3>
                         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                             <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
                                 <input
@@ -181,8 +210,7 @@ export function EmbeddingsView({ authToken }: Props) {
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                             <thead style={{ position: "sticky", top: 0, background: "var(--surface)", zIndex: 1 }}>
                                 <tr>
-                                    <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Frame</th>
-                                    <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Attribute</th>
+                                    <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Frame / Attribute</th>
                                     <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "1px solid var(--border)" }}>Value</th>
                                     <th style={{ padding: "0.75rem", textAlign: "center", borderBottom: "1px solid var(--border)" }}>Confidence</th>
                                     <th style={{ padding: "0.75rem", textAlign: "center", borderBottom: "1px solid var(--border)" }}>Source</th>
@@ -190,88 +218,163 @@ export function EmbeddingsView({ authToken }: Props) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {attributes.map((attr) => {
+                                {frameIds.map((frameId) => {
+                                    const frameAttrs = attributesByFrame[frameId];
+                                    const isExpanded = expandedFrames.has(frameId);
+                                    const firstAttr = frameAttrs[0];
+                                    const verifiedCount = frameAttrs.filter((a) => a.is_verified).length;
+
                                     return (
-                                        <tr
-                                            key={attr.id}
-                                            style={{
-                                                borderBottom: "1px solid var(--border)",
-                                                background: attr.is_verified ? "rgba(var(--success-rgb, 34, 197, 94), 0.05)" : "transparent"
-                                            }}
-                                        >
-                                            <td style={{ padding: "0.75rem" }}>
-                                                <div>
-                                                    <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>Frame #{attr.frame_id}</div>
-                                                    {attr.frame?.movie_title && (
-                                                        <div className="muted" style={{ fontSize: "0.8rem" }}>
-                                                            {attr.frame.movie_title}
+                                        <>
+                                            {/* Frame Header Row */}
+                                            <tr
+                                                key={`frame-${frameId}`}
+                                                style={{
+                                                    borderBottom: "1px solid var(--border)",
+                                                    background: "var(--surface)",
+                                                    cursor: "pointer",
+                                                }}
+                                                onClick={() => toggleFrame(frameId)}
+                                            >
+                                                <td style={{ padding: "0.75rem" }}>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                                        <span style={{ fontSize: "1rem" }}>{isExpanded ? "▼" : "▶"}</span>
+                                                        <div>
+                                                            <div style={{ fontWeight: 600 }}>Frame #{frameId}</div>
+                                                            {firstAttr.frame?.movie_title && (
+                                                                <div className="muted" style={{ fontSize: "0.8rem" }}>
+                                                                    {firstAttr.frame.movie_title}
+                                                                </div>
+                                                            )}
                                                         </div>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: "0.75rem" }} colSpan={2}>
+                                                    <span className="muted" style={{ fontSize: "0.9rem" }}>
+                                                        {frameAttrs.length} attribute{frameAttrs.length !== 1 ? "s" : ""}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                                                    {verifiedCount > 0 && (
+                                                        <span
+                                                            style={{
+                                                                padding: "0.25rem 0.5rem",
+                                                                borderRadius: "4px",
+                                                                background: "var(--success-bg)",
+                                                                color: "var(--success)",
+                                                                fontSize: "0.75rem",
+                                                                fontWeight: 500,
+                                                            }}
+                                                        >
+                                                            {verifiedCount} verified
+                                                        </span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: "0.75rem" }}>
-                                                <code style={{ fontSize: "0.85rem", background: "var(--surface)", padding: "0.25rem 0.5rem", borderRadius: "4px" }}>
-                                                    {attr.attribute}
-                                                </code>
-                                            </td>
-                                            <td style={{ padding: "0.75rem" }}>
-                                                <div style={{ fontWeight: 500 }}>{attr.value}</div>
-                                            </td>
-                                            <td style={{ padding: "0.75rem", textAlign: "center" }}>
-                                                {attr.confidence !== null ? (
-                                                    <span style={{
-                                                        fontFamily: "monospace",
-                                                        fontSize: "0.85rem",
-                                                        color: attr.confidence > 0.8 ? "var(--success)" : attr.confidence > 0.5 ? "var(--warning)" : "var(--muted)"
-                                                    }}>
-                                                        {(attr.confidence * 100).toFixed(1)}%
-                                                    </span>
-                                                ) : (
-                                                    <span className="muted">—</span>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: "0.75rem", textAlign: "center" }}>
-                                                {attr.is_verified ? (
-                                                    <span style={{
-                                                        padding: "0.25rem 0.5rem",
-                                                        borderRadius: "4px",
-                                                        background: "var(--success-bg)",
-                                                        color: "var(--success)",
-                                                        fontSize: "0.75rem",
-                                                        fontWeight: 500
-                                                    }}>
-                                                        ✓ User
-                                                    </span>
-                                                ) : (
-                                                    <span style={{
-                                                        padding: "0.25rem 0.5rem",
-                                                        borderRadius: "4px",
-                                                        background: "var(--surface)",
-                                                        color: "var(--muted)",
-                                                        fontSize: "0.75rem"
-                                                    }}>
-                                                        AI
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: "0.75rem", textAlign: "right" }}>
-                                                <button
-                                                    className="button button--ghost"
-                                                    onClick={() => handleDelete(attr.id, attr.attribute, attr.value)}
-                                                    disabled={deletingId === attr.id}
-                                                    style={{ fontSize: "0.85rem", padding: "0.25rem 0.75rem", color: "var(--danger)" }}
-                                                    title={`Delete this ${attr.attribute} value`}
-                                                >
-                                                    {deletingId === attr.id ? "Deleting..." : "Delete"}
-                                                </button>
-                                            </td>
-                                        </tr>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+
+                                            {/* Attribute Rows (when expanded) */}
+                                            {isExpanded &&
+                                                frameAttrs.map((attr) => (
+                                                    <tr
+                                                        key={attr.id}
+                                                        style={{
+                                                            borderBottom: "1px solid var(--border)",
+                                                            background: attr.is_verified
+                                                                ? "rgba(var(--success-rgb, 34, 197, 94), 0.05)"
+                                                                : "transparent",
+                                                        }}
+                                                    >
+                                                        <td style={{ padding: "0.75rem", paddingLeft: "3rem" }}>
+                                                            <code
+                                                                style={{
+                                                                    fontSize: "0.85rem",
+                                                                    background: "var(--surface)",
+                                                                    padding: "0.25rem 0.5rem",
+                                                                    borderRadius: "4px",
+                                                                }}
+                                                            >
+                                                                {attr.attribute}
+                                                            </code>
+                                                        </td>
+                                                        <td style={{ padding: "0.75rem" }}>
+                                                            <div style={{ fontWeight: 500 }}>{attr.value}</div>
+                                                        </td>
+                                                        <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                                                            {attr.confidence !== null ? (
+                                                                <span
+                                                                    style={{
+                                                                        fontFamily: "monospace",
+                                                                        fontSize: "0.85rem",
+                                                                        color:
+                                                                            attr.confidence > 0.8
+                                                                                ? "var(--success)"
+                                                                                : attr.confidence > 0.5
+                                                                                    ? "var(--warning)"
+                                                                                    : "var(--muted)",
+                                                                    }}
+                                                                >
+                                                                    {(attr.confidence * 100).toFixed(1)}%
+                                                                </span>
+                                                            ) : (
+                                                                <span className="muted">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                                                            {attr.is_verified ? (
+                                                                <span
+                                                                    style={{
+                                                                        padding: "0.25rem 0.5rem",
+                                                                        borderRadius: "4px",
+                                                                        background: "var(--success-bg)",
+                                                                        color: "var(--success)",
+                                                                        fontSize: "0.75rem",
+                                                                        fontWeight: 500,
+                                                                    }}
+                                                                >
+                                                                    ✓ User
+                                                                </span>
+                                                            ) : (
+                                                                <span
+                                                                    style={{
+                                                                        padding: "0.25rem 0.5rem",
+                                                                        borderRadius: "4px",
+                                                                        background: "var(--surface)",
+                                                                        color: "var(--muted)",
+                                                                        fontSize: "0.75rem",
+                                                                    }}
+                                                                >
+                                                                    AI
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: "0.75rem", textAlign: "right" }}>
+                                                            <button
+                                                                className="button button--ghost"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDelete(attr.id, attr.attribute, attr.value);
+                                                                }}
+                                                                disabled={deletingId === attr.id}
+                                                                style={{
+                                                                    fontSize: "0.85rem",
+                                                                    padding: "0.25rem 0.75rem",
+                                                                    color: "var(--danger)",
+                                                                }}
+                                                                title={`Delete this ${attr.attribute} value`}
+                                                            >
+                                                                {deletingId === attr.id ? "Deleting..." : "Delete"}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                        </>
                                     );
                                 })}
                             </tbody>
                         </table>
 
-                        {attributes.length === 0 && (
+                        {frameIds.length === 0 && (
                             <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>
                                 {verifiedOnly
                                     ? "No user-verified attributes found. Edit scene attributes in frames to mark them as verified."
