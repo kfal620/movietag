@@ -9,7 +9,7 @@ type Props = {
     onSaveActors: (frameId: number, detections: ActorDetection[]) => void;
 };
 
-type Tab = "core" | "tags" | "scene" | "actors";
+type Tab = "core" | "scene" | "actors";
 
 export function FrameEditPanel({
     frame,
@@ -23,10 +23,7 @@ export function FrameEditPanel({
     // -- Core Metadata State --
     const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
 
-    // -- Override/Tags State --
-    const [overrideTitle, setOverrideTitle] = useState("");
-    const [selectedModelPrediction, setSelectedModelPrediction] = useState<string>("");
-    const [overrideNotes, setOverrideNotes] = useState("");
+
 
     // -- Scene State --
     const [sceneRows, setSceneRows] = useState<SceneAttribute[]>([]);
@@ -52,10 +49,7 @@ export function FrameEditPanel({
                 capturedAt: frame.capturedAt ?? undefined,
             });
 
-            // Tags/Override (reset state)
-            setOverrideTitle("");
-            setSelectedModelPrediction("");
-            setOverrideNotes("");
+
 
             // Scene
             setSceneRows(frame.sceneAttributes ?? []);
@@ -69,13 +63,8 @@ export function FrameEditPanel({
         }
     }, [frame]);
 
-    const selectedPrediction = useMemo(() => {
-        if (!frame) return undefined;
-        return frame.predictions.find(
-            (prediction) =>
-                `${prediction.source}-${prediction.title}` === selectedModelPrediction,
-        );
-    }, [frame, selectedModelPrediction]);
+
+
 
     // -- Core Handlers --
     const updateMetadata = (key: keyof Frame, value: string) => {
@@ -145,7 +134,7 @@ export function FrameEditPanel({
     return (
         <div className="sidebar__section" style={{ minHeight: 400 }}>
             <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "1rem" }}>
-                {(["core", "tags", "scene", "actors"] as Tab[]).map((tab) => (
+                {(["core", "scene", "actors"] as Tab[]).map((tab) => (
                     <button
                         key={tab}
                         className={`button ${activeTab === tab ? "button--primary" : "button--ghost"}`}
@@ -198,7 +187,7 @@ export function FrameEditPanel({
                         placeholder="frames/clip/image.jpg"
                     />
 
-                    <label className="label" htmlFor="sceneSummary" style={{ marginTop: 8 }}>Scene summary</label>
+                    <label className="label" htmlFor="sceneSummary" style={{ marginTop: 8 }}>Movie Description</label>
                     <textarea
                         id="sceneSummary"
                         className="input"
@@ -218,65 +207,7 @@ export function FrameEditPanel({
                 </div>
             )}
 
-            {activeTab === "tags" && (
-                <div className="animate-fade-in">
-                    <label className="label" htmlFor="predictionSelect">
-                        Choose a model prediction
-                    </label>
-                    <select
-                        id="predictionSelect"
-                        className="select"
-                        value={selectedModelPrediction}
-                        onChange={(event) => setSelectedModelPrediction(event.target.value)}
-                    >
-                        <option value="">Select prediction...</option>
-                        {frame.predictions.map((prediction) => (
-                            <option key={`${prediction.source}-${prediction.title}`} value={`${prediction.source}-${prediction.title}`}>
-                                {prediction.title} ({(prediction.confidence * 100).toFixed(1)}% · {prediction.source})
-                            </option>
-                        ))}
-                    </select>
 
-                    <div style={{ margin: "1rem 0 0.5rem" }}>
-                        <span className="label">Or enter manually</span>
-                        <input
-                            className="input"
-                            placeholder="Tag / Movie title"
-                            value={overrideTitle}
-                            onChange={(event) => setOverrideTitle(event.target.value)}
-                        />
-                    </div>
-
-                    <label className="label" htmlFor="notes" style={{ marginTop: "0.75rem" }}>
-                        Notes (optional)
-                    </label>
-                    <textarea
-                        id="notes"
-                        className="input"
-                        style={{ minHeight: 90, resize: "vertical" }}
-                        value={overrideNotes}
-                        onChange={(event) => setOverrideNotes(event.target.value)}
-                        placeholder="Reason for tag..."
-                    />
-
-                    <button
-                        className="button button--primary"
-                        style={{ marginTop: "1rem", width: "100%" }}
-                        onClick={() => {
-                            if (selectedPrediction) {
-                                onApplyOverride(frame.id, selectedPrediction);
-                                setSelectedModelPrediction("");
-                            } else if (overrideTitle.trim()) {
-                                onApplyOverride(frame.id, overrideTitle.trim());
-                                setOverrideTitle("");
-                            }
-                            setOverrideNotes("");
-                        }}
-                    >
-                        Apply Tag
-                    </button>
-                </div>
-            )}
 
             {activeTab === "scene" && (
                 <div className="animate-fade-in">

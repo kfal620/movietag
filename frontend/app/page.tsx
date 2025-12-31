@@ -769,7 +769,7 @@ export default function Home() {
               </select>
               <input
                 className="input"
-                placeholder="Movie ID"
+                placeholder="Movie Name"
                 value={movieFilter}
                 onChange={(event) => setMovieFilter(event.target.value)}
                 style={{ minWidth: 120 }}

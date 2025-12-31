@@ -18,7 +18,7 @@ type Props = {
   authToken?: string;
 };
 
-type Tab = "core" | "tags" | "scene" | "actors" | "tmdb";
+type Tab = "movie" | "scene" | "actors";
 
 export function FrameEditModal({
   frame,
@@ -33,7 +33,7 @@ export function FrameEditModal({
   authToken,
 }: Props) {
   const [localFrame, setLocalFrame] = useState<Frame | undefined>(frame);
-  const [activeTab, setActiveTab] = useState<Tab>("core");
+  const [activeTab, setActiveTab] = useState<Tab>("movie");
 
   useEffect(() => {
     setLocalFrame(frame);
@@ -46,10 +46,7 @@ export function FrameEditModal({
   const [coreMessage, setCoreMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showLog, setShowLog] = useState(false);
 
-  // -- Override/Tags State --
-  const [overrideTitle, setOverrideTitle] = useState("");
-  const [selectedModelPrediction, setSelectedModelPrediction] = useState<string>("");
-  const [overrideNotes, setOverrideNotes] = useState("");
+
 
   // -- Scene State --
   const [sceneRows, setSceneRows] = useState<SceneAttribute[]>([]);
@@ -84,15 +81,11 @@ export function FrameEditModal({
         status: frame.status,
         filePath: frame.filePath,
         storageUri: frame.storageUri ?? undefined,
-        matchConfidence: frame.matchConfidence ?? undefined,
         capturedAt: frame.capturedAt ?? undefined,
       });
       setCoreMessage(null);
 
-      // Tags/Override (reset state)
-      setOverrideTitle("");
-      setSelectedModelPrediction("");
-      setOverrideNotes("");
+
 
       // Scene
       setSceneRows(frame.sceneAttributes ?? []);
@@ -145,13 +138,7 @@ export function FrameEditModal({
     }
   }, [frame, isOpen, authToken]);
 
-  const selectedPrediction = useMemo(() => {
-    if (!localFrame) return undefined;
-    return localFrame.predictions.find(
-      (prediction) =>
-        `${prediction.source}-${prediction.title}` === selectedModelPrediction,
-    );
-  }, [localFrame, selectedModelPrediction]);
+
 
   // -- Core Handlers --
   const updateMetadata = (key: keyof Frame, value: string) => {
@@ -358,13 +345,6 @@ export function FrameEditModal({
       onSaveActors(localFrame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined)),
     ];
 
-    // Apply override if selected
-    if (selectedPrediction) {
-      savePromises.push(onApplyOverride(localFrame.id, selectedPrediction));
-    } else if (overrideTitle.trim()) {
-      savePromises.push(onApplyOverride(localFrame.id, overrideTitle.trim()));
-    }
-
     // Wait for all saves to complete before closing
     await Promise.all(savePromises);
 
@@ -500,7 +480,7 @@ export function FrameEditModal({
 
         {/* Tab Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "0 1.5rem 1.5rem" }}>
-          {activeTab === "core" && (
+          {activeTab === "movie" && (
             <div className="animate-fade-in">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                 <div>
@@ -513,8 +493,6 @@ export function FrameEditModal({
                     placeholder="123"
                   />
                 </div>
-
-
 
                 <div>
                   <label className="label" htmlFor="status">Status</label>
@@ -530,18 +508,6 @@ export function FrameEditModal({
                     <option value="confirmed">Confirmed</option>
                   </select>
                 </div>
-
-                <div>
-                  <label className="label" htmlFor="matchConfidence">Match confidence</label>
-                  <input
-                    id="matchConfidence"
-                    className="input"
-                    value={draftMetadata.matchConfidence ?? ""}
-                    onChange={(event) => setDraftMetadata((prev) => ({ ...prev, matchConfidence: event.target.value ? Number(event.target.value) : null }))}
-                    placeholder="0.95"
-                  />
-                </div>
-
               </div>
 
               <label className="label" htmlFor="filePath" style={{ marginTop: "1rem" }}>File path</label>
@@ -549,11 +515,12 @@ export function FrameEditModal({
                 id="filePath"
                 className="input"
                 value={draftMetadata.filePath ?? ""}
-                onChange={(event) => updateMetadata("filePath", event.target.value)}
+                readOnly
+                disabled
                 placeholder="frames/clip/image.jpg"
               />
 
-              <label className="label" htmlFor="sceneSummary" style={{ marginTop: "1rem" }}>Scene summary</label>
+              <label className="label" htmlFor="sceneSummary" style={{ marginTop: "1rem" }}>Movie Description</label>
               <textarea
                 id="sceneSummary"
                 className="input"
@@ -562,51 +529,96 @@ export function FrameEditModal({
                 onChange={(event) => updateMetadata("sceneSummary", event.target.value)}
                 placeholder="Short description of the shot."
               />
-            </div>
-          )}
 
-          {activeTab === "tags" && (
-            <div className="animate-fade-in">
-              <label className="label" htmlFor="predictionSelect">
-                Choose a model prediction
-              </label>
-              <select
-                id="predictionSelect"
-                className="select"
-                value={selectedModelPrediction}
-                onChange={(event) => setSelectedModelPrediction(event.target.value)}
-              >
-                <option value="">Select prediction...</option>
-                {localFrame.predictions.map((prediction) => (
-                  <option key={`${prediction.source}-${prediction.title}`} value={`${prediction.source}-${prediction.title}`}>
-                    {prediction.title} ({(prediction.confidence * 100).toFixed(1)}% · {prediction.source})
-                  </option>
-                ))}
-              </select>
-
-              <div style={{ margin: "1rem 0 0.5rem" }}>
-                <span className="label">Or enter manually</span>
+              {/* TMDB Search Integration */}
+              <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
+                <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>Search & Assign Movie</h3>
+                <p className="muted" style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+                  Enter a title (and optional year) to override the frame&apos;s movie. Results require a moderator or admin token.
+                </p>
+                <label className="label" htmlFor="tmdbQuery">
+                  Movie title
+                </label>
                 <input
+                  id="tmdbQuery"
                   className="input"
-                  placeholder="Tag / Movie title"
-                  value={overrideTitle}
-                  onChange={(event) => setOverrideTitle(event.target.value)}
+                  placeholder="e.g. The Matrix"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
                 />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <input
+                    className="input"
+                    placeholder="Year (optional)"
+                    value={searchYear}
+                    onChange={(event) => setSearchYear(event.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button className="button button--primary" type="button" onClick={runSearch} disabled={searching}>
+                    {searching ? "Searching..." : "Search TMDb"}
+                  </button>
+                </div>
+                {searchError ? <p style={{ color: "var(--danger)", marginTop: 8 }}>{searchError}</p> : null}
+                {searchResults.length ? (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8, maxHeight: "300px", overflowY: "auto" }}>
+                    {searchResults.map((result) => {
+                      const isSelected = selectedTmdbId === result.tmdb_id;
+                      const posterUrl =
+                        result.poster_path && result.poster_path.startsWith("http")
+                          ? result.poster_path
+                          : result.poster_path
+                            ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
+                            : "/placeholder-thumbnail.svg";
+                      return (
+                        <div
+                          key={result.tmdb_id}
+                          style={{
+                            display: "flex",
+                            gap: 12,
+                            border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)",
+                            background: isSelected ? "rgba(59, 130, 246, 0.08)" : undefined,
+                            cursor: "pointer",
+                            padding: 8,
+                            borderRadius: 8,
+                          }}
+                          onClick={() => setSelectedTmdbId(result.tmdb_id)}
+                        >
+                          <div style={{ position: "relative", width: 60, height: 90, flexShrink: 0 }}>
+                            <Image src={posterUrl} alt={result.title} fill style={{ objectFit: "cover", borderRadius: 6 }} sizes="60px" />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                              <strong>{result.title}</strong>
+                              <span className="chip chip--muted">{result.release_year ?? "Unknown year"}</span>
+                            </div>
+                            <p style={{ margin: 0, lineHeight: 1.4, fontSize: "0.9rem", color: "var(--muted)" }}>
+                              {result.overview || "No synopsis available."}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  searchQuery &&
+                  !searching &&
+                  !searchError && <p className="muted" style={{ marginTop: 12 }}>No results yet. Try another title or year.</p>
+                )}
+                <button
+                  className="button"
+                  type="button"
+                  style={{ marginTop: 12, width: "100%" }}
+                  disabled={!selectedTmdbId || assigning}
+                  onClick={confirmAssignment}
+                >
+                  {assigning ? "Assigning..." : "Confirm assignment"}
+                </button>
+                {assignMessage ? <p style={{ marginTop: 8, color: assignMessage.toLowerCase().includes("assign") ? "var(--success)" : "var(--danger)" }}>{assignMessage}</p> : null}
               </div>
-
-              <label className="label" htmlFor="notes" style={{ marginTop: "0.75rem" }}>
-                Notes (optional)
-              </label>
-              <textarea
-                id="notes"
-                className="input"
-                style={{ minHeight: 90, resize: "vertical" }}
-                value={overrideNotes}
-                onChange={(event) => setOverrideNotes(event.target.value)}
-                placeholder="Reason for tag..."
-              />
             </div>
           )}
+
+
 
           {activeTab === "scene" && (
             <div className="animate-fade-in">
@@ -790,91 +802,6 @@ export function FrameEditModal({
             </div>
           )}
 
-          {activeTab === "tmdb" && (
-            <div className="animate-fade-in">
-              <p className="muted" style={{ marginBottom: "1rem" }}>
-                Enter a title (and optional year) to override the frame&apos;s movie. Results require a moderator or admin token.
-              </p>
-              <label className="label" htmlFor="tmdbQuery">
-                Movie title
-              </label>
-              <input
-                id="tmdbQuery"
-                className="input"
-                placeholder="e.g. The Matrix"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input
-                  className="input"
-                  placeholder="Year (optional)"
-                  value={searchYear}
-                  onChange={(event) => setSearchYear(event.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button className="button button--primary" type="button" onClick={runSearch} disabled={searching}>
-                  {searching ? "Searching..." : "Search TMDb"}
-                </button>
-              </div>
-              {searchError ? <p style={{ color: "var(--danger)", marginTop: 8 }}>{searchError}</p> : null}
-              {searchResults.length ? (
-                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8, maxHeight: "300px", overflowY: "auto" }}>
-                  {searchResults.map((result) => {
-                    const isSelected = selectedTmdbId === result.tmdb_id;
-                    const posterUrl =
-                      result.poster_path && result.poster_path.startsWith("http")
-                        ? result.poster_path
-                        : result.poster_path
-                          ? `https://image.tmdb.org/t/p/w200${result.poster_path}`
-                          : "/placeholder-thumbnail.svg";
-                    return (
-                      <div
-                        key={result.tmdb_id}
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)",
-                          background: isSelected ? "rgba(59, 130, 246, 0.08)" : undefined,
-                          cursor: "pointer",
-                          padding: 8,
-                          borderRadius: 8,
-                        }}
-                        onClick={() => setSelectedTmdbId(result.tmdb_id)}
-                      >
-                        <div style={{ position: "relative", width: 60, height: 90, flexShrink: 0 }}>
-                          <Image src={posterUrl} alt={result.title} fill style={{ objectFit: "cover", borderRadius: 6 }} sizes="60px" />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-                            <strong>{result.title}</strong>
-                            <span className="chip chip--muted">{result.release_year ?? "Unknown year"}</span>
-                          </div>
-                          <p style={{ margin: 0, lineHeight: 1.4, fontSize: "0.9rem", color: "var(--muted)" }}>
-                            {result.overview || "No synopsis available."}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                searchQuery &&
-                !searching &&
-                !searchError && <p className="muted" style={{ marginTop: 12 }}>No results yet. Try another title or year.</p>
-              )}
-              <button
-                className="button"
-                type="button"
-                style={{ marginTop: 12, width: "100%" }}
-                disabled={!selectedTmdbId || assigning}
-                onClick={confirmAssignment}
-              >
-                {assigning ? "Assigning..." : "Confirm assignment"}
-              </button>
-              {assignMessage ? <p style={{ marginTop: 8, color: assignMessage.toLowerCase().includes("assign") ? "var(--success)" : "var(--danger)" }}>{assignMessage}</p> : null}
-            </div>
-          )}
         </div>
 
         {/* Footer with action buttons */}

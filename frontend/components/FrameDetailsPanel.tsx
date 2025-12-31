@@ -109,7 +109,7 @@ export function FrameDetailsPanel({ frame, authToken, onAssignTmdb }: Props) {
             <strong>{frame.predictedShotId || "—"}</strong>
           </div>
           <div className="meta-box">
-            <label>Scene summary</label>
+            <label>Movie Description</label>
             <strong>{frame.sceneSummary || "Unknown"}</strong>
           </div>
           <div className="meta-box">

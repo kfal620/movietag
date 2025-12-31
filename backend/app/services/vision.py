@@ -399,7 +399,8 @@ SCENE_ATTRIBUTE_PROMPTS = {
         "3_shot": "three people in frame, three shot, 3 shot"
     },
     "composition": {
-        "rule_of_thirds": "composition following rule of thirds, rule of thirds",
+        "left_heavy": "subject on left side of frame, subject on left, left heavy composition",
+        "right_heavy": "subject on right side of frame, subject on right, right heavy composition",
         "centered": "centered composition",
         "symmetrical": "symmetrical composition"
     },
