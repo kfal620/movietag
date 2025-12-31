@@ -697,7 +697,7 @@ export function FrameEditModal({
                       className="select"
                       value={row.value}
                       onChange={(event) => updateSceneRow(index, "value", event.target.value)}
-                      style={{ fontSize: "0.85rem", height: "1.875rem" }}
+                      style={{ fontSize: "0.9rem", height: "2rem", padding: "0.25rem 0.5rem" }}
                       disabled={!row.attribute || !attributeOptions[row.attribute]}
                     >
                       <option value="">Select value...</option>
