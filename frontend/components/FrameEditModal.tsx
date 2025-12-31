@@ -39,7 +39,7 @@ export function FrameEditModal({
     setLocalFrame(frame);
   }, [frame]);
 
-  // -- Core Metadata State --
+  // -- Movie Metadata State --
   const [draftMetadata, setDraftMetadata] = useState<Partial<Frame>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [selectedPipeline, setSelectedPipeline] = useState<string>(getSelectedPipelineId());
@@ -69,7 +69,7 @@ export function FrameEditModal({
 
   useEffect(() => {
     if (frame && isOpen) {
-      // Core
+      // Movie metadata
       setDraftMetadata({
         movieId: frame.movieId,
 
@@ -140,7 +140,7 @@ export function FrameEditModal({
 
 
 
-  // -- Core Handlers --
+  // -- Movie Tab Handlers --
   const updateMetadata = (key: keyof Frame, value: string) => {
     setDraftMetadata((prev) => ({ ...prev, [key]: value }));
   };
@@ -460,7 +460,7 @@ export function FrameEditModal({
 
         {/* Tab Navigation */}
         <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "1rem" }}>
-          {(["core", "tags", "scene", "actors", "tmdb"] as Tab[]).map((tab) => (
+          {(["movie", "scene", "actors"] as Tab[]).map((tab) => (
             <button
               key={tab}
               className={`button ${activeTab === tab ? "button--primary" : "button--ghost"}`}
