@@ -18,7 +18,7 @@ type Props = {
   authToken?: string;
 };
 
-type Tab = "movie" | "scene" | "actors";
+type Tab = "movie" | "attributes" | "actors";
 
 export function FrameEditModal({
   frame,
@@ -385,25 +385,25 @@ export function FrameEditModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with image and title */}
-        <div style={{ display: "flex", padding: "1.5rem", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ flex: 1, marginRight: "1.5rem" }}>
-            <div style={{ position: "relative", width: "100%", height: "300px", borderRadius: "12px", overflow: "hidden" }}>
+        <div style={{ display: "flex", padding: "1rem", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ flex: 1, marginRight: "1rem" }}>
+            <div style={{ position: "relative", width: "100%", height: "250px", borderRadius: "12px", overflow: "hidden" }}>
               <Image src={freshImageUrl || localFrame.imageUrl} alt={localFrame.movieTitle} fill style={{ objectFit: "cover" }} />
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <h2 style={{ margin: 0, marginBottom: "0.5rem" }}>{localFrame.movieTitle}</h2>
-            <p style={{ color: "var(--muted)", margin: 0, marginBottom: "0.5rem" }}>
+            <h2 style={{ margin: 0, marginBottom: "0.25rem" }}>{localFrame.movieTitle}</h2>
+            <p style={{ color: "var(--muted)", margin: 0, marginBottom: "0.25rem", fontSize: "0.9rem" }}>
               Status: {localFrame.status.replace("_", " ")}
             </p>
 
             {/* Show which pipeline generated the current attributes */}
             {localFrame.analysisLog && localFrame.analysisLog._metadata && (
               <div style={{
-                fontSize: "0.85rem",
+                fontSize: "0.8rem",
                 color: "var(--muted)",
-                marginBottom: "1rem",
-                padding: "0.5rem",
+                marginBottom: "0.5rem",
+                padding: "0.375rem 0.5rem",
                 background: "var(--surface)",
                 borderRadius: "6px",
                 border: "1px solid var(--border)"
@@ -418,8 +418,8 @@ export function FrameEditModal({
             )}
 
             {/* Pipeline Selector */}
-            <div style={{ marginBottom: "0.5rem" }}>
-              <label style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "0.25rem", display: "block" }}>
+            <div style={{ marginBottom: "0.375rem" }}>
+              <label style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: "0.125rem", display: "block" }}>
                 Run New Analysis With:
               </label>
               <VisionPipelineSelector
@@ -429,13 +429,13 @@ export function FrameEditModal({
               />
             </div>
 
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto" }}>
+            <div style={{ display: "flex", gap: "0.375rem", marginTop: "auto" }}>
               <button
                 type="button"
                 className="button button--ghost"
                 onClick={runVisionAnalysis}
                 disabled={analyzing || !authToken}
-                style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
+                style={{ fontSize: "0.85rem", padding: "0.375rem 0.625rem" }}
               >
                 {analyzing ? "Analyzing..." : "Run Vision Analysis"}
               </button>
@@ -444,14 +444,14 @@ export function FrameEditModal({
                   type="button"
                   className="button button--ghost"
                   onClick={() => setShowLog(true)}
-                  style={{ fontSize: "0.9rem", padding: "0.5rem 0.75rem" }}
+                  style={{ fontSize: "0.85rem", padding: "0.375rem 0.625rem" }}
                 >
                   View Log
                 </button>
               )}
             </div>
             {coreMessage && (
-              <p style={{ marginTop: "0.25rem", fontSize: "0.85rem", color: coreMessage.type === "success" ? "var(--success)" : "var(--danger)" }}>
+              <p style={{ marginTop: "0.25rem", fontSize: "0.8rem", color: coreMessage.type === "success" ? "var(--success)" : "var(--danger)" }}>
                 {coreMessage.text}
               </p>
             )}
@@ -459,8 +459,8 @@ export function FrameEditModal({
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "1rem" }}>
-          {(["movie", "scene", "actors"] as Tab[]).map((tab) => (
+        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "0.75rem" }}>
+          {(["movie", "attributes", "actors"] as Tab[]).map((tab) => (
             <button
               key={tab}
               className={`button ${activeTab === tab ? "button--primary" : "button--ghost"}`}
@@ -469,7 +469,7 @@ export function FrameEditModal({
                 borderRadius: 0,
                 borderBottom: activeTab === tab ? "2px solid var(--foreground)" : "none",
                 opacity: activeTab === tab ? 1 : 0.6,
-                padding: "0.75rem 0"
+                padding: "0.5rem 0"
               }}
               onClick={() => setActiveTab(tab)}
             >
@@ -479,28 +479,30 @@ export function FrameEditModal({
         </div>
 
         {/* Tab Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 1.5rem 1.5rem" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 1rem 1rem" }}>
           {activeTab === "movie" && (
             <div className="animate-fade-in">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
                 <div>
-                  <label className="label" htmlFor="movieId">Movie ID</label>
+                  <label className="label" htmlFor="movieId" style={{ marginBottom: "0.25rem" }}>Movie ID</label>
                   <input
                     id="movieId"
                     className="input"
                     value={draftMetadata.movieId ?? ""}
                     onChange={(event) => setDraftMetadata((prev) => ({ ...prev, movieId: event.target.value ? Number(event.target.value) : null }))}
                     placeholder="123"
+                    style={{ height: "2rem", fontSize: "0.9rem" }}
                   />
                 </div>
 
                 <div>
-                  <label className="label" htmlFor="status">Status</label>
+                  <label className="label" htmlFor="status" style={{ marginBottom: "0.25rem" }}>Status</label>
                   <select
                     id="status"
                     className="select"
                     value={draftMetadata.status}
                     onChange={(event) => updateMetadata("status", event.target.value)}
+                    style={{ height: "2rem", fontSize: "0.9rem" }}
                   >
                     <option value="needs_analyzing">Needs Analyzing</option>
                     <option value="analyzed">Analyzed</option>
@@ -510,7 +512,7 @@ export function FrameEditModal({
                 </div>
               </div>
 
-              <label className="label" htmlFor="filePath" style={{ marginTop: "1rem" }}>File path</label>
+              <label className="label" htmlFor="filePath" style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>File path</label>
               <input
                 id="filePath"
                 className="input"
@@ -518,25 +520,26 @@ export function FrameEditModal({
                 readOnly
                 disabled
                 placeholder="frames/clip/image.jpg"
+                style={{ height: "2rem", fontSize: "0.9rem" }}
               />
 
-              <label className="label" htmlFor="sceneSummary" style={{ marginTop: "1rem" }}>Movie Description</label>
+              <label className="label" htmlFor="sceneSummary" style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>Movie Description</label>
               <textarea
                 id="sceneSummary"
                 className="input"
-                style={{ minHeight: 60 }}
+                style={{ minHeight: 50, fontSize: "0.9rem", padding: "0.375rem 0.5rem" }}
                 value={draftMetadata.sceneSummary ?? ""}
                 onChange={(event) => updateMetadata("sceneSummary", event.target.value)}
                 placeholder="Short description of the shot."
               />
 
               {/* TMDB Search Integration */}
-              <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
-                <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>Search & Assign Movie</h3>
-                <p className="muted" style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+              <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
+                <h3 style={{ marginTop: 0, marginBottom: "0.375rem", fontSize: "0.95rem" }}>Search & Assign Movie</h3>
+                <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
                   Enter a title (and optional year) to override the frame&apos;s movie. Results require a moderator or admin token.
                 </p>
-                <label className="label" htmlFor="tmdbQuery">
+                <label className="label" htmlFor="tmdbQuery" style={{ marginBottom: "0.25rem" }}>
                   Movie title
                 </label>
                 <input
@@ -545,16 +548,17 @@ export function FrameEditModal({
                   placeholder="e.g. The Matrix"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  style={{ height: "2rem", fontSize: "0.9rem" }}
                 />
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                   <input
                     className="input"
                     placeholder="Year (optional)"
                     value={searchYear}
                     onChange={(event) => setSearchYear(event.target.value)}
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, height: "2rem", fontSize: "0.9rem" }}
                   />
-                  <button className="button button--primary" type="button" onClick={runSearch} disabled={searching}>
+                  <button className="button button--primary" type="button" onClick={runSearch} disabled={searching} style={{ padding: "0 0.75rem", fontSize: "0.9rem" }}>
                     {searching ? "Searching..." : "Search TMDb"}
                   </button>
                 </div>
@@ -620,14 +624,14 @@ export function FrameEditModal({
 
 
 
-          {activeTab === "scene" && (
+          {activeTab === "attributes" && (
             <div className="animate-fade-in">
               {localFrame.analysisLog && localFrame.analysisLog._metadata && (
                 <div style={{
-                  fontSize: "0.85rem",
+                  fontSize: "0.8rem",
                   color: "var(--muted)",
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
+                  marginBottom: "0.75rem",
+                  padding: "0.5rem",
                   background: "var(--surface)",
                   borderRadius: "6px",
                   border: "1px solid var(--border)"
@@ -642,34 +646,34 @@ export function FrameEditModal({
               )}
 
               {/* Column Labels */}
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", paddingLeft: "0.25rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.375rem", paddingLeft: "0.25rem" }}>
                 <div style={{ flex: 1 }}>
-                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.8rem", color: "var(--muted)" }}>
                     Attribute
                   </label>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.8rem", color: "var(--muted)" }}>
                     Value
                   </label>
                 </div>
                 <div style={{ flex: 0.5 }}>
-                  <label className="label" style={{ marginBottom: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                  <label className="label" style={{ marginBottom: 0, fontSize: "0.8rem", color: "var(--muted)" }}>
                     Confidence Score
                   </label>
                 </div>
-                <div style={{ width: "44px" }}>{/* Spacer for delete button */}</div>
+                <div style={{ width: "40px" }}>{/* Spacer for delete button */}</div>
               </div>
 
               {sceneRows.map((row, index) => (
-                <div key={index} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", marginBottom: "0.5rem" }}>
+                <div key={index} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", marginBottom: "0.375rem" }}>
                   <div style={{ flex: 1, position: "relative" }}>
                     <input
                       className="input"
                       value={row.attribute}
                       onChange={(event) => updateSceneRow(index, "attribute", event.target.value)}
                       placeholder="Attribute"
-                      style={{ fontSize: "0.9rem", paddingLeft: row.isVerified ? "2rem" : undefined }}
+                      style={{ fontSize: "0.85rem", height: "1.875rem", paddingLeft: row.isVerified ? "1.875rem" : undefined }}
                     />
                     {row.isVerified && (
                       <span
@@ -680,7 +684,8 @@ export function FrameEditModal({
                           top: "50%",
                           transform: "translateY(-50%)",
                           color: "var(--success)",
-                          cursor: "help"
+                          cursor: "help",
+                          fontSize: "0.85rem"
                         }}
                       >
                         ✓
@@ -692,7 +697,7 @@ export function FrameEditModal({
                       className="select"
                       value={row.value}
                       onChange={(event) => updateSceneRow(index, "value", event.target.value)}
-                      style={{ fontSize: "0.9rem" }}
+                      style={{ fontSize: "0.85rem", height: "1.875rem" }}
                       disabled={!row.attribute || !attributeOptions[row.attribute]}
                     >
                       <option value="">Select value...</option>
@@ -709,12 +714,12 @@ export function FrameEditModal({
                       value={row.confidence ?? ""}
                       onChange={(event) => updateSceneRow(index, "confidence", event.target.value)}
                       placeholder="Conf."
-                      style={{ fontSize: "0.9rem" }}
+                      style={{ fontSize: "0.85rem", height: "1.875rem" }}
                     />
                   </div>
                   <button
                     className="button button--ghost"
-                    style={{ color: 'var(--danger)', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                    style={{ color: 'var(--danger)', padding: '0.188rem 0.375rem', fontSize: '0.75rem', height: '1.875rem' }}
                     type="button"
                     onClick={() => removeSceneRow(index)}
                   >
@@ -723,7 +728,7 @@ export function FrameEditModal({
                 </div>
               ))}
 
-              <button className="button" type="button" onClick={addSceneRow} style={{ marginTop: "0.5rem" }}>
+              <button className="button" type="button" onClick={addSceneRow} style={{ marginTop: "0.375rem", fontSize: "0.9rem", padding: "0.375rem 0.75rem" }}>
                 + Add Attribute
               </button>
             </div>
@@ -732,15 +737,15 @@ export function FrameEditModal({
           {activeTab === "actors" && (
             <div className="animate-fade-in">
               {actorRows.map((row, index) => (
-                <div key={index} style={{ marginBottom: "0.75rem", padding: "0.75rem", border: '1px solid var(--border)', borderRadius: 8 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                <div key={index} style={{ marginBottom: "0.5rem", padding: "0.5rem", border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0.375rem", marginBottom: "0.375rem" }}>
                     <div>
                       <input
                         className="input"
                         value={row.castMemberId ?? ""}
                         onChange={(event) => updateActorRow(index, "castMemberId", event.target.value)}
                         placeholder="Cast ID"
-                        style={{ fontSize: "0.9rem" }}
+                        style={{ fontSize: "0.85rem", height: "1.875rem" }}
                       />
                     </div>
                     <div>
@@ -749,7 +754,7 @@ export function FrameEditModal({
                         value={row.faceIndex ?? ""}
                         onChange={(event) => updateActorRow(index, "faceIndex", event.target.value)}
                         placeholder="Face #"
-                        style={{ fontSize: "0.9rem" }}
+                        style={{ fontSize: "0.85rem", height: "1.875rem" }}
                       />
                     </div>
                     <div>
@@ -758,7 +763,7 @@ export function FrameEditModal({
                         value={row.confidence ?? ""}
                         onChange={(event) => updateActorRow(index, "confidence", event.target.value)}
                         placeholder="Conf."
-                        style={{ fontSize: "0.9rem" }}
+                        style={{ fontSize: "0.85rem", height: "1.875rem" }}
                       />
                     </div>
                     <div>
@@ -767,11 +772,11 @@ export function FrameEditModal({
                         placeholder="Emotion"
                         value={row.emotion ?? ""}
                         onChange={(e) => updateActorRow(index, "emotion", e.target.value)}
-                        style={{ fontSize: "0.9rem" }}
+                        style={{ fontSize: "0.85rem", height: "1.875rem" }}
                       />
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
                     <input
                       className="input"
                       placeholder="Pose (Y,P,R)"
@@ -782,11 +787,11 @@ export function FrameEditModal({
                         updateActorRow(index, "posePitch", p);
                         updateActorRow(index, "poseRoll", r);
                       }}
-                      style={{ flex: 1, fontSize: "0.9rem" }}
+                      style={{ flex: 1, fontSize: "0.85rem", height: "1.875rem" }}
                     />
                     <button
                       className="button button--ghost"
-                      style={{ color: 'var(--danger)', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                      style={{ color: 'var(--danger)', padding: '0.188rem 0.375rem', fontSize: '0.75rem', height: '1.875rem' }}
                       type="button"
                       onClick={() => removeActorRow(index)}
                     >
@@ -796,7 +801,7 @@ export function FrameEditModal({
                 </div>
               ))}
 
-              <button className="button" type="button" onClick={addActorRow} style={{ marginTop: "0.5rem" }}>
+              <button className="button" type="button" onClick={addActorRow} style={{ marginTop: "0.375rem", fontSize: "0.9rem", padding: "0.375rem 0.75rem" }}>
                 + Add Actor
               </button>
             </div>
@@ -805,11 +810,11 @@ export function FrameEditModal({
         </div>
 
         {/* Footer with action buttons */}
-        <div style={{ display: "flex", gap: "1rem", padding: "1.5rem", borderTop: "1px solid var(--border)" }}>
-          <button className="button button--ghost" style={{ flex: 1 }} onClick={onClose}>
+        <div style={{ display: "flex", gap: "0.75rem", padding: "1rem", borderTop: "1px solid var(--border)" }}>
+          <button className="button button--ghost" style={{ flex: 1, padding: "0.5rem" }} onClick={onClose}>
             Cancel
           </button>
-          <button className="button button--primary" style={{ flex: 1 }} onClick={handleSave}>
+          <button className="button button--primary" style={{ flex: 1, padding: "0.5rem" }} onClick={handleSave}>
             Save Changes
           </button>
         </div>
