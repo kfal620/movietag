@@ -530,7 +530,7 @@ export function FrameEditModal({
                 style={{ minHeight: 50, fontSize: "0.9rem", padding: "0.375rem 0.5rem" }}
                 value={draftMetadata.sceneSummary ?? ""}
                 onChange={(event) => updateMetadata("sceneSummary", event.target.value)}
-                placeholder="Short description of the shot."
+                placeholder="Short summary of the movie."
               />
 
               {/* TMDB Search Integration */}
