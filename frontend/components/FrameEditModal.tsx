@@ -340,17 +340,21 @@ export function FrameEditModal({
   const handleSave = async () => {
     if (!localFrame) return;
 
-    // Collect all save operations as promises
+    // Close modal immediately for instant UI feedback
+    onClose();
+
+    // Execute save operations in the background
     const savePromises = [
       onSaveMetadata(localFrame.id, draftMetadata),
       onSaveScene(localFrame.id, sceneRows.filter(r => r.attribute && r.value)),
       onSaveActors(localFrame.id, actorRows.filter(r => r.castMemberId !== null || r.confidence !== undefined)),
     ];
 
-    // Wait for all saves to complete before closing
-    await Promise.all(savePromises);
-
-    onClose();
+    // Execute saves asynchronously (no need to await since modal is already closed)
+    Promise.all(savePromises).catch(err => {
+      console.error('Error saving frame data:', err);
+      // Optionally show a toast notification here if you have a notification system
+    });
   };
 
   if (!isOpen || !localFrame) return null;
