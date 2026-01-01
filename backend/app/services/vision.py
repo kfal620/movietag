@@ -381,22 +381,24 @@ SCENE_ATTRIBUTE_PROMPTS = {
         "front_light": "front light",
     },
     "interior_exterior": {"interior": "interior view, inside", "exterior": "exterior view, outside"},
-    "emotion": {
-        "calm": "calm atmosphere, calm expression",
-        "intense": "intense atmosphere, intense expression",
-        "joyful": "joyful atmosphere, joyful expression",
-        "melancholic": "melancholic atmosphere, melancholic expression",
-    },
     "shot type": {
         "establishing": "establishing shot, wide shot",
         "high_angle": "high angle shot",
         "low_angle": "low angle shot",
         "dutch_angle": "dutch angle shot, tilted camera, crooked horizon, crooked view",
         "over_the_shoulder": "over the shoulder shot, shoulder in foreground, blurry person in foreground",
-        "medium_shot": "medium shot, waist up, ",
         "clean_single": "single subject shot",
         "2_shot": "two people in frame, two shot, 2 shot",
         "3_shot": "three people in frame, three shot, 3 shot"
+    },
+    "shot_size": {
+        "extreme_wide": "extreme wide shot, very wide shot",
+        "wide": "wide shot, full body shot, establishing shot",
+        "medium_wide": "medium wide shot, knees up",
+        "medium": "medium shot, waist up",
+        "medium_closeup": "medium closeup, chest up, medium close-up",
+        "closeup": "closeup, close-up, head and shoulders",
+        "extreme_closeup": "extreme closeup, extreme close-up, just face, very tight shot"
     },
     "composition": {
         "left_heavy": "subject on left side of frame, subject on left, left heavy composition",
