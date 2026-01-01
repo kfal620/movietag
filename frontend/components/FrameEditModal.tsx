@@ -231,8 +231,9 @@ export function FrameEditModal({
       const next = [...prev];
       const updated = { ...next[index], [key]: value, isVerified: true };
       if (key === "confidence") {
-        const parsed = Number(value);
-        updated.confidence = Number.isNaN(parsed) ? undefined : parsed;
+        // Store the parsed value; parseFloat handles partial decimals better than Number()
+        const parsed = value === "" ? undefined : parseFloat(value);
+        updated.confidence = (parsed !== undefined && !Number.isNaN(parsed)) ? parsed : undefined;
       }
       next[index] = updated;
       return next;
@@ -249,7 +250,8 @@ export function FrameEditModal({
       if (key === "castMemberId") {
         updated.castMemberId = value === "" ? null : Number(value);
       } else if (key === "confidence") {
-        updated.confidence = value === "" ? undefined : Number(value);
+        const parsed = value === "" ? undefined : parseFloat(value);
+        updated.confidence = (parsed !== undefined && !Number.isNaN(parsed)) ? parsed : undefined;
       } else if (key === "faceIndex") {
         updated.faceIndex = value === "" ? undefined : Number(value);
       } else if (key === "bbox") {
@@ -713,6 +715,10 @@ export function FrameEditModal({
                   <div style={{ flex: 0.5 }}>
                     <input
                       className="input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
                       value={row.confidence ?? ""}
                       onChange={(event) => updateSceneRow(index, "confidence", event.target.value)}
                       placeholder="Conf."
@@ -762,6 +768,10 @@ export function FrameEditModal({
                     <div>
                       <input
                         className="input"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="1"
                         value={row.confidence ?? ""}
                         onChange={(event) => updateActorRow(index, "confidence", event.target.value)}
                         placeholder="Conf."
