@@ -131,7 +131,8 @@ export default function Home() {
 
   const framesUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (movieFilter) params.set("movie_id", movieFilter);
+    // Note: movieFilter is excluded here since it's a name (string), not movie_id (integer)
+    // Movie name filtering is done client-side after fetching
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (actorFilter) params.set("cast_member_id", actorFilter);
     if (timeOfDayFilter) params.set("time_of_day", timeOfDayFilter);
@@ -142,7 +143,7 @@ export default function Home() {
       .forEach((tag) => params.append("tag", tag));
     const search = params.toString();
     return `/api/frames${search ? `?${search}` : ""}`;
-  }, [actorFilter, movieFilter, statusFilter, tagFilter, timeOfDayFilter]);
+  }, [actorFilter, statusFilter, tagFilter, timeOfDayFilter]);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem("movietagToken");
@@ -180,8 +181,8 @@ export default function Home() {
   );
 
   const frames: Frame[] = useMemo(
-    () =>
-      data?.items.map((item) => {
+    () => {
+      const allFrames = data?.items.map((item) => {
         const predictions: Prediction[] = [];
 
         return {
@@ -230,8 +231,19 @@ export default function Home() {
           embeddingModelVersion: item.embedding_model_version ?? undefined,
           analysisLog: item.analysisLog,
         };
-      }) ?? [],
-    [data],
+      }) ?? [];
+
+      // Client-side filtering by movie name/title
+      if (movieFilter) {
+        const filterLower = movieFilter.toLowerCase().trim();
+        return allFrames.filter((frame) =>
+          frame.movieTitle?.toLowerCase().includes(filterLower)
+        );
+      }
+
+      return allFrames;
+    },
+    [data, movieFilter],
   );
 
   const [selectedFrameId, setSelectedFrameId] = useState<number | undefined>(undefined);
@@ -565,7 +577,9 @@ export default function Home() {
         .filter(Boolean);
       const payload = {
         filters: {
-          movie_id: movieFilter ? Number(movieFilter) : null,
+          // Note: movie_id is excluded since movieFilter is now a movie name (string)
+          // not a movie_id (integer). Vision analysis will run on all frames matching
+          // other filters, and movie name filtering happens client-side afterwards.
           status: statusFilter !== "all" ? statusFilter : null,
           cast_member_id: actorFilter ? Number(actorFilter) : null,
           time_of_day: timeOfDayFilter || null,

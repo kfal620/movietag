@@ -482,7 +482,7 @@ export function FrameEditModal({
         <div style={{ flex: 1, overflowY: "auto", padding: "0 1rem 1rem" }}>
           {activeTab === "movie" && (
             <div className="animate-fade-in">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
                 <div>
                   <label className="label" htmlFor="movieId" style={{ marginBottom: "0.25rem" }}>Movie ID</label>
                   <input
@@ -502,7 +502,7 @@ export function FrameEditModal({
                     className="select"
                     value={draftMetadata.status}
                     onChange={(event) => updateMetadata("status", event.target.value)}
-                    style={{ height: "2rem", fontSize: "0.9rem" }}
+                    style={{ fontSize: "0.9rem", height: "2rem", padding: "0.25rem 0.5rem" }}
                   >
                     <option value="needs_analyzing">Needs Analyzing</option>
                     <option value="analyzed">Analyzed</option>
@@ -510,24 +510,26 @@ export function FrameEditModal({
                     <option value="confirmed">Confirmed</option>
                   </select>
                 </div>
-              </div>
 
-              <label className="label" htmlFor="filePath" style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>File path</label>
-              <input
-                id="filePath"
-                className="input"
-                value={draftMetadata.filePath ?? ""}
-                readOnly
-                disabled
-                placeholder="frames/clip/image.jpg"
-                style={{ height: "2rem", fontSize: "0.9rem" }}
-              />
+                <div>
+                  <label className="label" htmlFor="filePath" style={{ marginBottom: "0.25rem" }}>File path</label>
+                  <input
+                    id="filePath"
+                    className="input"
+                    value={draftMetadata.filePath ?? ""}
+                    readOnly
+                    disabled
+                    placeholder="frames/clip/image.jpg"
+                    style={{ height: "2rem", fontSize: "0.8rem" }}
+                  />
+                </div>
+              </div>
 
               <label className="label" htmlFor="sceneSummary" style={{ marginTop: "0.75rem", marginBottom: "0.25rem" }}>Movie Description</label>
               <textarea
                 id="sceneSummary"
                 className="input"
-                style={{ minHeight: 50, fontSize: "0.9rem", padding: "0.375rem 0.5rem" }}
+                style={{ minHeight: 50, fontSize: "0.8rem", padding: "0.375rem 0.5rem" }}
                 value={draftMetadata.sceneSummary ?? ""}
                 onChange={(event) => updateMetadata("sceneSummary", event.target.value)}
                 placeholder="Short summary of the movie."
